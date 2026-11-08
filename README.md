@@ -198,6 +198,7 @@ BinaryOrbit/
 - 所有数据访问走 `lib/api.ts`（`fetch` + 统一错误 toast），用 `@tanstack/vue-query` 做缓存与失效（标记删除后自动刷新列表/统计）。
 - 状态（`places`、`filters`、`stats`、抽屉状态）放 Pinia；地图实例不放进 store。
 - 响应式断点 `860px`：≥860 时抽屉改为右侧栏（404px），统计改成常驻卡；<860 时抽屉在底部、高 90vh，统计收成徽标。**不使用 `data-surface` 双壳**。
+- 移动端打开「搜索附近」时，地图容器缩到抽屉上方（约 44vh）并 `map.resize()`，让准星与半径圈始终可见（这也是「半径圈不被抽屉遮挡」的落地方式）。
 - 不引入 UI 组件库，样式手写（CSS 变量定义主题色，为二期视觉留改口）。
 - 视觉与交互以 `prototype/` 为准（其缺陷按 §3.2 已修正：搜索按钮不换行、移动端标签常显、半径圈不被抽屉遮挡、建议面板对齐输入框）。
 - 初始视野：先读 `localStorage` 里的上次地图视野；没有就用 `/v3/ip` 定位到省份中心；再没有就落在全国中心（104.19, 35.86）、zoom 4。空库时显示引导语「拖地图到店门口 → 点『搜索附近』开始记录」。
@@ -313,8 +314,21 @@ CREATE TABLE IF NOT EXISTS city_dict (     -- 城市字典（启动时从 /v3/co
 5. `web/dist` 不存在时，自动执行 `npm run build`；
 6. `node server\index.ts`（控制台保持打开，关窗即停止）。
 
-`开发.bat`（可选）：`npm run dev`（Vite HMR `5173`，`/api` 代理到 `8787`）+ 后端并行。
+`开发.bat`（可选）：`npm run dev:server`（`node --watch server/index.ts`）+ `npm run dev:web`（Vite HMR `5173`，`/api` 与 `/_AMapService` 代理到 `8787`）并行。
 **不提供** `scripts/pack.mjs`（zip 中转已取消）。
+
+npm scripts：
+
+| 命令 | 作用 |
+|---|---|
+| `npm run dev:server` / `dev:web` | 后端 watch / Vite 开发服务器 |
+| `npm run build` | 构建 `web/dist`（生产） |
+| `npm start` | 起生产服务（需要 `web/dist`） |
+| `npm test` | 后端 8 条集成测试（`node --test`，无需额外依赖） |
+| `npm run typecheck` | `tsc --noEmit`（前后端共享一个 tsconfig） |
+
+> npm 11 默认不执行依赖的安装脚本，`esbuild` 缺 postinstall 会导致 `vite build` 失败。
+> `package.json` 里的 `allowScripts` 已显式放行 `esbuild` 与 `vue-demi`，`npm install` 会自动生效，无需手动干预。
 
 ## 5. 测试设计
 
