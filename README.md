@@ -143,12 +143,12 @@ iPad 实测结论：高德 2.0 WebGL 的**矢量文字注记**会把主线程占
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `MAP_LABELS` | `auto` | `auto`：**只在触屏上**按 zoom 分级（低于 `MAP_LABEL_MAX_ZOOM` 才显示），鼠标设备视为 `on`；`on`：始终显示（iPad 上会卡）；`off`：始终隐藏 |
+| `MAP_LABELS` | `auto` | 只影响触屏设备（iPad / iPhone / 安卓）：`auto` 低于 `MAP_LABEL_MAX_ZOOM` 才显示、`on` 始终显示、`off` 始终隐藏。**PC 不受这个配置影响，任何 zoom 都显示注记** |
 | `MAP_LABEL_MAX_ZOOM` | `12` | `auto` 模式的注记上限 zoom，3–18 |
 
 调试时可以用 URL 参数临时覆盖（优先级高于 `.env`）：`?labels=on|off|auto`、`?labelzoom=13`，配合 `?debug=1` 的 `mapOptions` 字段能看到实际生效值。其中 `?labels=auto` 会让任何设备（包括桌面）都按 zoom 分级，方便对比。
 
-> 桌面端高德走栅格瓦片，注记是烘在瓦片图片里的，这个开关实际上只影响 iPad / 手机这类 WebGL 渲染。
+> PC 端（鼠标设备）永远显示注记：同一份 WebGL 渲染在 PC 上并不卡，没必要牺牲路名。带触摸屏的 Windows 笔记本会被当成触屏设备处理（可用 `MAP_LABELS=on` 或 `?labels=on` 覆盖）。
 
 实现上没有重建地图：建图后找 `CLASS_NAME` 含 `Label` 的图层调 `setVisible()`，并在 `zoomend` 时同步，所以「低 zoom 显示、高 zoom 隐藏」是实时的。
 

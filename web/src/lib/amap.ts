@@ -27,25 +27,41 @@ export interface LabelSettings {
   mode: LabelsMode;
   /** auto 模式下注记显示的 zoom 上限（低于它才显示） */
   maxZoom: number;
+  /** 是否按触屏设备（移动端）处理，仅用于 diag 展示 */
+  touch: boolean;
+}
+
+/** 是否有触屏（iPad / iPhone / 安卓、以及带触摸屏的笔记本）。 */
+export function isTouchEnvironment(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(any-pointer: coarse)').matches;
 }
 
 /**
- * 注记策略：`.env` 的 `MAP_LABELS` / `MAP_LABEL_MAX_ZOOM` 打底，URL 参数可临时覆盖（调试用）：
- * `?labels=1|0|auto`、`?labelzoom=13`。
+ * 注记策略：**鼠标设备永远全显示**，`.env` 只作用于触屏设备（iPad / iPhone / 安卓）。
+ *
+ * 依据：只有触屏走 WebGL 矢量注记，高 zoom 会把主线程占满；PC 上同样渲染路径也不卡。
+ * URL 参数（`?labels=` / `?labelzoom=`）用于调试，可覆盖任何设备的判断。
  */
-export function resolveLabels(config: AppConfig, search = window.location.search): LabelSettings {
+export function resolveLabels(
+  config: AppConfig,
+  search = window.location.search,
+  touch = isTouchEnvironment(),
+): LabelSettings {
   const params = new URLSearchParams(search);
   const raw = params.get('labels');
-  // `.env` 的 auto 只对触屏生效（触屏走 WebGL 矢量注记，高 zoom 会把主线程占满）；
-  // 鼠标设备没有这个负担，按 on 处理，桌面行为和以前一致。
-  const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(any-pointer: coarse)').matches;
-  const envMode: LabelsMode = config.mapLabels === 'auto' && !coarse ? 'on' : config.mapLabels;
-  // URL 参数用于调试，显式写 auto 就任何设备都按 zoom 分级
+  const envMode: LabelsMode = touch ? config.mapLabels : 'on';
   const mode: LabelsMode =
-    raw === '1' ? 'on' : raw === '0' || raw === 'off' ? 'off' : raw === 'auto' ? 'auto' : envMode;
+    raw === 'on' || raw === '1'
+      ? 'on'
+      : raw === 'off' || raw === '0'
+        ? 'off'
+        : raw === 'auto'
+          ? 'auto'
+          : envMode;
   const zoomOverride = Number(params.get('labelzoom'));
   const maxZoom = Number.isFinite(zoomOverride) && zoomOverride > 0 ? zoomOverride : config.mapLabelMaxZoom;
-  return { mode, maxZoom };
+  return { mode, maxZoom, touch };
 }
 
 /** 注入 JSAPI 2.0 脚本，并把安全密钥的验证交给后端代理。 */
