@@ -12,10 +12,13 @@
 ### 1.1 范围确认
 
 - **不含定位**：手机定位需要 HTTPS，本期不做 HTTPS，因此"附近"改为**以地图中心为锚点的周边检索**（拖地图 → 搜这一带）。
-
 - **不含导入**：历史数据手动录入，不做 Excel/截图导入。
 - **不含照片/分享/时间轴**：留到二期，数据模型预留字段。
 - **部署形态**：本机自托管，局域网 IP 访问，仅两人使用，无账号体系。
+- **不含地点信息编辑**：地点只可新增与删除；到访记录只可新增与删除（不做编辑，见 §3.2/§4.2）。
+- **不含长按记点**：手动地点只能从「搜索附近」抽屉里的「在地图上手动记一笔」进入。
+- **不含补标城市搜索**：城市页全国地级市轮廓常驻且可点，点亮靠点地图而不是搜名字。
+- **不含城市→地图筛选联动**：城市卡片只做「定位视野 + 高亮该城标记」，不改筛选 chips。
 
 ## 2. 技术路线
 
@@ -31,27 +34,36 @@
 | 6 | 部署 | 本机/局域网，固定端口 `8787`，IP 访问，无 HTTPS |
 | 7 | 进程模型 | 单进程：API + 静态文件 + SQLite 单文件库 |
 | 8 | 传输安全 | 不做 HTTPS；手机端无定位；高德请求全部经后端代理 |
-| 9 | POI 查询路径 | 后端代理（key 不外泄、结果可缓存、白名单问题绕开） |
+| 9 | POI 查询路径 | 后端代理 `/v3/place/*`（key 不外泄、结果可缓存），前端不使用 `PlaceSearch` 插件 |
 | 10 | 数据模型 | `place`（地点实体）+ `visit`（到访记录）双表 |
-| 11 | 城市口径 | 由 place 的 `city_adcode` 自动反推 + 手动补标表 `city_manual` |
+| 11 | 城市口径 | place 的 `city_adcode` 反推 + `city_manual` 补标；**直辖市归一化到省级 adcode** |
 | 12 | 前端栈 | Vue 3 + Vite + TypeScript（Pinia/组合式 API，不引入 UI 组件库） |
-| 13 | 页面结构 | 2 个 Tab：地图 / 城市；统计以**浮窗**形式常驻右上角，可显隐切换 |
-| 14 | 价格档位 | 低 `<60`、中 `60–150`、高 `>150`（元/人），阈值写在配置常量里 |
+| 13 | 页面结构 | 2 个 Tab：地图 / 城市；统计以**浮窗**形式常驻，可显隐切换 |
+| 14 | 价格档位 | 低 `<60`、中 `60–150`、高 `>150`（元/人），阈值由 `.env` 经 `/api/config` 下发 |
 | 15 | 评分 | 1–5 星整数，**可选**（不阻塞快速录入） |
 | 16 | 景点字段 | 复用 `visit`：日期必填，评分/备注可选，不用 `price_tier` |
 | 17 | 去重键 | `place.external_id` = 高德 POI id（唯一索引）；再次提交 = 追加 visit |
 | 18 | 运行时 | Node **24 LTS**（自带 `node:sqlite` 与 TS 类型剥离，后端零构建） |
 | 19 | 后端框架 | Hono（轻、无装饰器、`@hono/node-server` 一行起服务） |
-| 20 | 启动方式 | Windows 侧 `启动.bat` 一键启动（不打包 exe） |
-| 21 | 代码位置 | VM 的 ext4 目录 `~/BinaryOrbit` 开发；共享目录只做交付中转 |
-| 22 | 交付 | `npm run pack` 生成源码 zip → `/home/VMShare/` → Windows 解压运行 |
+| 20 | 启动方式 | Windows 侧 `启动.bat` 一键启动（不打包 exe）；`开发.bat` 走 Vite HMR |
+| 21 | 代码位置 | 开发直接在仓库目录进行（ext4），**不再做 zip 中转** |
+| 22 | 交付 | `git push origin main` → Windows 端 `git pull` → 首次 `npm install` → 双击 `启动.bat` |
+| 23 | 底图观感 | **CSS 滤镜压色调**（`saturate/contrast/brightness` 变量化）逼近原型的安静米色；自定义地图样式留二期 |
+| 24 | 城市页实现 | **真实地理边界**：AMap zoom 4 + DataV 逐省地级市 GeoJSON，全国轮廓常驻且可点 |
+| 25 | 端适配 | **一套响应式**，断点 `860px`：≥860 右侧栏 + 常驻统计卡；<860 底部抽屉 + 统计徽标 |
+| 26 | 删除语义 | 删除某地点最后一条到访 = **连带删除该地点** |
+| 27 | 状态持久化 | `localStorage` 只存 4 项：统计折叠、地图视野、筛选 chips、城市页视野 |
+| 28 | 边界数据源 | DataV.GeoAtlas，逐省懒加载 + 本地缓存（约 3.68MB，一次性后永久离线） |
+| 29 | 关键词搜索范围 | 默认限定**地图中心所在城市**，可一键切「全国」 |
+| 30 | 标记标签 | zoom ≥ 13 常显店名（聚合点除外）；聚合气泡为 accent 实底 + 白字数量 |
 
-### 2.2 环境事实（已实测）
+### 2.2 环境事实（已实测，2026-11）
 
 - `node:sqlite` 在 Node 24.22 上**免 flag 可用**（建表/插入/查询验证通过）→ 不需要原生模块，Windows 上不需要编译工具链。
 - Node 24 可**直接执行 `.ts`**（类型剥离）→ 后端无 tsc/esbuild 构建步骤，`node server/index.ts` 即可。
-- 当前工作目录 `/home/VMShare/BinaryOrbit` 是 **vboxsf 共享盘，不支持符号链接**，`node_modules` 无法装 → 源码迁至 `~/BinaryOrbit`。
 - Node 版本要求（README 需写明）：**Node ≥ 24**（`node:sqlite` 在 22.x 需要实验性 flag）。
+- Node 原生 `--env-file=.env` 能正确处理 `KEY=value`；**但行内 `# 注释` 会被截断、`dotenv` 则不会** → `.env` 一律「注释单独成行」，不写行内注释。
+- 仓库不含 `.gitignore` 时 `.env` 有被提交风险 → 已补 `.gitignore`（`node_modules/ web/dist/ data/ .env`）。
 
 ### 2.3 进程与请求流向
 
@@ -61,31 +73,42 @@
    ▼
 ┌──────────────────────────── Node 24 单进程（Hono） ──────────────────────────┐
 │  GET  /                → 托管 web/dist 静态资源（SPA fallback）               │
-│  GET  /api/config      → { jsKey, serviceHost: "/_AMapService" }             │
-│  ALL  /api/*           → 业务接口（places / visits / cities / stats / search） │
-│  ALL  /_AMapService/*  → 转发 restapi.amap.com，注入 jscode + platform=JS   │
+│  GET  /api/config      → { jsKey, serviceHost, priceTiers }                  │
+│  ALL  /api/*           → 业务接口（places / visits / cities / stats / search）│
+│  ALL  /_AMapService/*  → 转发 restapi.amap.com，注入 jscode + platform=JS    │
 │  SQLite                → data/orbit.db（node:sqlite，同步 API）              │
-│  其他                   → data/geo/*.json（地级市边界缓存，DataV 源，免 key）  │
+│  其他                   → data/geo/*.json（地级市边界缓存，DataV 源，免 key）│
 └──────────────────────────────────────────────────────────────────────────────┘
         │ 后端持有 2 个 key
-        ├── AMAP_WEB_KEY      → /v3/place/text、/v3/place/around、/v3/geocode/regeo
-        └── AMAP_JS_KEY + AMAP_SECURITY_CODE → 前端渲染地图 / JSAPI 内部请求
+        ├── AMAP_WEB_KEY      → /v3/place/text、/v3/place/around、/v3/geocode/regeo、/v3/config/district
+        ├── AMAP_JS_KEY + AMAP_SECURITY_CODE → 前端渲染地图 / JSAPI 内部请求
+        └── DataV GeoAtlas    → 地级市边界（免 key，逐省缓存）
 ```
 
-**为什么这样分**：JSAPI 2.0 强制要求"安全密钥"，明文放前端等于公开。官方支持的 `serviceHost` 方案正好可以把 `/_AMapService/*` 反代到 `restapi.amap.com` 并注入 `jscode`，于是前端拿到的是无密钥的请求地址，且**官方文档示例就用 `http://IP:80` 形式**，与我们的无 HTTPS 局域网形态完全兼容。
+**代理注入配方（实测）**：`/_AMapService/*` 转发时必须同时追加 `jscode=<AMAP_SECURITY_CODE>` 与 `platform=JS&s=rsv3`。
+只加 `jscode` 会返回 `10009 USERKEY_PLAT_NOMATCH`；加上 `platform=JS&s=rsv3` 后同一 URL 立即 `status=1`。
+
+**为什么这样分**：JSAPI 2.0 强制要求"安全密钥"，明文放前端等于公开。官方支持的 `serviceHost` 方案正好可以把 `/_AMapService/*` 反代到 `restapi.amap.com` 并注入密钥，于是前端拿到的是无密钥的请求地址。
 
 ### 2.4 配置
 
-`.env`（gitignored）→ `.env.example`：
+`.env`（gitignored，注释**单独成行**）→ `.env.example` 同结构留空：
 
 ```ini
 PORT=8787
-AMAP_JS_KEY=            # 高德 Web端(JS API) key，前端渲染地图用
-AMAP_SECURITY_CODE=     # 对应安全密钥 jscode，只在服务端使用
-AMAP_WEB_KEY=           # 高德 Web服务 key，后端检索 POI / 逆地理用
-PRICE_TIER_LOW=60       # 低档上限
-PRICE_TIER_HIGH=150     # 高档下限
+# 高德 Web端(JS API) key，前端渲染地图用
+AMAP_JS_KEY=
+# 对应安全密钥 jscode，只在服务端使用
+AMAP_SECURITY_CODE=
+# 高德 Web服务 key，后端检索 POI / 逆地理 / 行政区划用
+AMAP_WEB_KEY=
+# 低档上限（元/人）
+PRICE_TIER_LOW=60
+# 高档下限（元/人）
+PRICE_TIER_HIGH=150
 ```
+
+启动自检：缺任一 `AMAP_*` 项 → 打印中文指引（哪个 key 去哪儿申请）并 `exit(1)`，不带着半残配置起服务。
 
 ### 2.5 目录结构
 
@@ -95,23 +118,24 @@ BinaryOrbit/
 ├─ package.json          # 单 package，前端依赖放 devDependencies
 ├─ .env.example  .env(gitignored)
 ├─ 启动.bat              # Windows 生产启动（构建好的 dist + 后端）
-├─ 开发.bat              # Windows 开发（可选）
-├─ scripts/pack.mjs      # 打源码 zip 到 /home/VMShare/
+├─ 开发.bat              # Windows 开发（Vite HMR + 后端并行）
+├─ scripts/smoke.md      # agent-browser 冒烟步骤记录（不引入前端测试依赖）
 ├─ server/
 │  ├─ index.ts           # Hono 装配、静态托管、启动横幅（IP + 二维码 + 开浏览器）
 │  ├─ db.ts              # node:sqlite 连接 + 迁移执行
 │  ├─ schema.sql
-│  ├─ amap.ts            # 高德 Web 服务封装（含限流/错误映射）
-│  ├─ geo.ts             # 地级市边界下载与缓存
-│  └─ routes/{places,visits,cities,stats,search,config}.ts
+│  ├─ amap.ts            # 高德 Web 服务封装（含限流/错误映射/城市字典）
+│  ├─ geo.ts             # 地级市边界下载、归一化与缓存
+│  └─ routes/{places,visits,cities,stats,search,config,regeo}.ts
 ├─ web/
 │  ├─ index.html  vite.config.ts
 │  └─ src/
 │     ├─ main.ts  App.vue  router.ts
 │     ├─ views/MapView.vue  CitiesView.vue
 │     ├─ components/AMapCanvas.vue  SearchPanel.vue  PlaceDrawer.vue
-│     │             PlaceFormDrawer.vue  FilterChips.vue  StatsFloat.vue
-│     ├─ lib/{amap.ts,api.ts,theme.ts}
+│     │             PlaceFormDrawer.vue  VisitRow.vue  CityCard.vue
+│     │             FilterChips.vue  StatsFloat.vue
+│     ├─ lib/{amap.ts,api.ts,theme.ts,geo.ts}
 │     └─ styles/
 └─ data/                 # gitignored：orbit.db + geo 缓存
 ```
@@ -120,41 +144,63 @@ BinaryOrbit/
 
 ### 3.1 信息架构
 
-- 底部 Tab × 2：**地图**（`/map`，默认）/ **城市**（`/cities`）。
-- **统计浮窗**：`fixed` 右上角，两个 Tab 上都在，显示 3 个数字（饭店 / 景点 / 城市），点击折叠成一个小徽标，显隐与折叠状态存 `localStorage`。不单独占页面。
+- 底部 Tab × 2：**地图**（`/map`，默认）/ **城市**（`/cities`），路由直链可用、刷新保持。
+- **统计浮窗**：`fixed` 右上角，两个 Tab 上都在，显示 3 个数字（饭店 / 景点 / 城市）。
+  - ≥860px：常驻展开卡片（三列 + 分隔线，高度与搜索/筛选区对齐）。
+  - <860px：默认收成小徽标（总足迹数），点击展开卡片。
+  - 折叠状态存 `localStorage`。
 
 ### 3.2 地图页
 
-**图层**：`AMap.Map`（zoom 12 起）、餐厅/景点两类 Marker、`AMap.MarkerCluster` 聚合、可选的周边搜索圆。
+**图层**：`AMap.Map`（zoom 12 起）、餐厅/景点两类 Marker、`AMap.MarkerCluster` 聚合、周边搜索圆。
+**底图**：`mapStyle` 不可用（样式服务未开通），统一用默认底图 + 容器 CSS 滤镜 `saturate(.35) contrast(.95) brightness(1.04)`（写成 CSS 变量，便于微调）。
 
-**顶部**：搜索入口（关键词） + 筛选 chips（`全部 / 餐厅 / 景点`）。
+**标记与聚合**：
+- 聚合 `gridSize 60`，气泡自定义为 `--accent` 实底 + 白字数量；点击聚合 → `zoomIn`（最多到 16）。
+- 点单个标记 → 底部抽屉/右侧栏详情。
+- zoom ≥ 13 时常显店名标签（聚合点不显示任何单个名字）；< 13 只在 hover/focus/选中时显示。
+
+**顶部**：搜索入口（关键词）+ 筛选 chips（`全部 / 餐厅 / 景点`，带计数，选择存 `localStorage`）。
 
 **记录入口（现场快速标记）**：
-1. 地图中心放一个固定准星；右下角 FAB「记录」→ 展开「搜这一带」；
+1. 地图中心固定准星；右下角/顶部「搜索附近」→ 打开抽屉；
 2. 半径选择 `500m / 1km / 3km`（默认 1km）→ 调 `/api/search?lng&lat&radius&type`；
-3. 结果以列表形式弹出在底部面板（店名、分类、距离、以及"已记录 ✓"角标——由后端比对 `external_id` 得出）；
-4. 点某条 → 抽屉式表单，**自动预填**名称/地址/坐标/分类/`city_adcode`，只让填「日期（默认今天）+ 星级（可选）+ 价位（可选，餐厅才有）+ 备注（可选）」→ 保存即成功（餐厅 3 次点击内完成）。
+3. 结果列表（店名、分类、距离、以及「已记录 ✓」角标——由后端比对 `external_id` 得出），按距离升序；
+4. 点某条 → 抽屉内切到录入表单，**自动预填**名称/地址/坐标/分类/`city_adcode`，只填「日期（默认今天）+ 星级（可选）+ 价位（可选，餐厅才有）+ 备注（可选）」→ 保存即成功。
+5. 抽屉底部另有「**在地图上手动记一笔**」——**这是唯一的手动记点入口**（不做长按/右键）。手动点提交前检查「附近 50m 内是否已有同名地点」：命中则弹二选一（**合到已有地点 / 仍然新建**），不自动合并。
 
-**记录入口（回家补录）**：顶部搜索框输入关键词（可带城市）→ `/api/search?keyword&city` → 同样走上面的抽屉表单，只是日期可改成过去。选中的店若 `external_id` 已存在，表单标题变成「再来一次」，保存时只追加 `visit`。
+**记录入口（回家补录）**：顶部搜索框输入关键词 → `/api/search?keyword&city`（`city` 默认 = 地图中心所在城市，输入框右侧显示「上海 ∨」可切「全国」）→ 同样走抽屉表单。选中的店若 `external_id` 已存在，表单标题变成「再来一次」，保存时只追加 `visit`。
 
-**手动点选**：长按/点击地图空白处 → 「在这里记一个地点」→ 表单（名称必填、类型必选、城市由 `/api/regeo` 补全）。手动点没有 `external_id`，因此在提交前会检查"附近 50m 内是否已有同名地点"，有则提示合并。
+**搜索建议**：输入 ≥1 字符、防抖 300ms；建议项 = 本地已存（≤4）+ 高德（≤4）；↑↓ 选择、Enter 打开、Esc 关闭；无结果时给「记一个『关键词』」入口。
 
-**标记交互**：点 Marker → 底部抽屉：店名、类型/分类、地址、城市、总到访次数、最近一次日期、评分；下方到访历史列表（日期 + 星级 + 价位 + 备注，可编辑/删除）；底部按钮「再去一次」（追加今天）与「删除地点」。
+**标记交互（详情抽屉）**：店名、类型/分类、地址、城市、总到访次数、最近一次日期、平均评分；下方到访历史（日期 + 星级 + 价位 + 备注）。
+- 每条到访右侧一枚**红色垃圾桶图标**，点击后按钮变红底「确认删除？」文字，**3 秒**内再点才执行，超时复原。
+- 删除该地点**最后一条**到访 → 后端连带删除地点，前端关闭抽屉并 toast「已删除该地点」。
+- 底部按钮：「再去一次」（追加今天）/「删除地点」（同样二次确认）。
+- **不做**单条到访编辑、**不做**地点信息编辑。
 
 ### 3.3 城市页
 
-- 全国视野（zoom 4）地图 + `AMap.GeoJSON` 图层渲染**地级市边界**：去过的城市填主题色（半透明）+ 深色描边，未去过不着色。
-- 边界数据来自 DataV.GeoAtlas，**后端缓存到 `data/geo/`**，只在首次/新增城市时按需拉取，之后完全离线。
-- 点某个已点亮城市 → 浮卡片显示该城市「餐厅 N / 景点 M / 最近一次」+ 「查看该城市标记」按钮（跳回地图页并预设筛选）。
-- 「补标城市」入口：搜索城市名（`/api/geo/city?kw=` 或用本地 city 列表匹配）→ 记为"去过"（写入 `city_manual`），用于"路过但没记录地点"的情况。
+- 全国视野（zoom 4）AMap + `AMap.GeoJSON` 图层渲染**地级市边界**。
+  - **已点亮**（有 place 或 `city_manual` 记录）：`--accent` 25% 填充 + `--accent-ink` 1.5px 描边 + 城市名常显 + 副行「餐厅 N · 景点 M」（zoom < 5 时隐藏副行）。
+  - **未点亮**：透明填充 + 极淡灰描边（全国常驻，任意城市可点）；名字只在 hover/选中时出现。
+- 边界数据来自 DataV.GeoAtlas，**逐省懒加载**（并发 4），缓存到 `data/geo/prov_<adcode>.json`；已缓存的省立即渲染，缺的按「正在加载城市边界 12/34」进度补齐，之后完全离线。
+- **行政单元归一化**：4 个直辖市合并为 1 个城市（多边形用省级轮廓 `310000.json` 等，不用 16 个区）；省直辖县级市（仙桃/济源/海南各县）保留为独立城市；台湾（710000，DataV 无数据）不做多边形、不可点亮；港澳正常。
+- 点某城市 → 浮卡片：
+  - 已点亮：餐厅 N / 景点 M / 最近一次 + 「在地图上查看」→ 跳回地图页、视野移到该城地点范围并高亮该城标记（**不改筛选 chips**）。
+  - 未点亮：「点亮」按钮 → 写 `city_manual`。
+  - 手动补标城市：「取消补标」。
+- 虚线航线：按**首次到访日期**排序连接各已点亮城市中心，`--accent` 34% 虚线，可用 CSS 变量一键关闭。
 
 ### 3.4 关键实现约定
 
 - `AMapCanvas.vue` 只负责 JSAPI 生命周期（load → 建图 → 销毁清理），**命令式 API 用 `shallowRef` + `watch` 驱动**，不让 Vue 响应式包裹 AMap 实例。
 - 所有数据访问走 `lib/api.ts`（`fetch` + 统一错误 toast），用 `@tanstack/vue-query` 做缓存与失效（标记删除后自动刷新列表/统计）。
 - 状态（`places`、`filters`、`stats`、抽屉状态）放 Pinia；地图实例不放进 store。
-- 移动优先：底部抽屉 + 大按钮；桌面端抽屉变成右侧栏（CSS 断点 `md`）。
+- 响应式断点 `860px`：≥860 抽屉→右侧栏（404px）、统计常驻卡；<860 抽屉→底部 90vh、统计徽标。**不使用 `data-surface` 双壳**。
 - 不引入 UI 组件库，样式手写（CSS 变量定义主题色，为二期视觉留改口）。
+- 视觉与交互以 `prototype/` 为准（其缺陷按 §3.2 已修正：搜索按钮不换行、移动端标签常显、半径圈不被抽屉遮挡、建议面板对齐输入框）。
+- 初始视野：读 `localStorage` 上次地图视野 → 否则 `/v3/ip` 定位省份中心 → 否则全国中心（104.19, 35.86）zoom 4；空库时给引导语「拖地图到店门口 → 点『搜索附近』开始记录」。
 
 ## 4. 后端设计
 
@@ -174,126 +220,160 @@ CREATE TABLE IF NOT EXISTS place (
   lat          REAL NOT NULL,
   category     TEXT,                   -- 高德分类，如 "餐饮服务;中餐厅"
   city_name    TEXT,
-  city_adcode  TEXT,                   -- 用于城市反推与高亮
+  city_adcode  TEXT,                   -- 用于城市反推与高亮（直辖市存省级 adcode）
   district     TEXT,
-  created_time   TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_time   TEXT NOT NULL DEFAULT (datetime('now'))
+  created_time TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_time TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS visit (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  place_id   INTEGER NOT NULL REFERENCES place(id) ON DELETE CASCADE,
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  place_id     INTEGER NOT NULL REFERENCES place(id) ON DELETE CASCADE,
   visited_date TEXT NOT NULL,            -- 'YYYY-MM-DD'
-  rating     INTEGER CHECK (rating BETWEEN 1 AND 5),
-  price_tier TEXT CHECK (price_tier IN ('low','mid','high')),  -- 仅餐厅
-  note       TEXT,
+  rating       INTEGER CHECK (rating BETWEEN 1 AND 5),
+  price_tier   TEXT CHECK (price_tier IN ('low','mid','high')),  -- 仅餐厅
+  note         TEXT,
   created_time TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_visit_place ON visit(place_id, visited_date DESC);
 
 CREATE TABLE IF NOT EXISTS city_manual (   -- 手动补标的"去过"城市
+  adcode      TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  marked_time TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS city_dict (     -- 城市字典（启动时从 /v3/config/district 同步）
   adcode    TEXT PRIMARY KEY,
   name      TEXT NOT NULL,
-  marked_time TEXT NOT NULL DEFAULT (datetime('now'))
+  lng       REAL,
+  lat       REAL
 );
 ```
 
-城市的唯一口径：`SELECT DISTINCT city_adcode FROM place WHERE city_adcode IS NOT NULL UNION SELECT adcode FROM city_manual`。统计三张卡：`count(place where type='restaurant')`、`count(place where type='spot')`、上面这个集合的大小。
+- 城市的唯一口径：`SELECT DISTINCT city_adcode FROM place WHERE city_adcode IS NOT NULL UNION SELECT adcode FROM city_manual`。
+- 统计三张卡：`count(place where type='restaurant')`、`count(place where type='spot')`、上面这个集合的大小。
+- 高德 POI 结果**不含 adcode**（只有 `pname/cityname/adname`），且 `regeo` 对直辖市返回 `city: []` → 落库规则：按 `cityname` 查 `city_dict` 取 adcode；`cityname` 为空则按 `pname`（省级）取 adcode；仍miss才调 `/v3/geocode/regeo` 兜底。
 
-### 4.2 API 清单
+### 4.2 API 清单（13 个）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/config` | 返回 `{ jsKey, serviceHost, priceTiers }` |
-| GET | `/api/places` | 标记列表（`?type=&city=&year=`），每条带 `visit_count`/`last_visited_on`/`last_rating` |
+| GET | `/api/config` | `{ jsKey, serviceHost, priceTiers }` |
+| GET | `/api/places` | 标记列表（仅 `?type=` 筛选），每条带 `visit_count`/`last_visited_on`/`last_rating` |
 | GET | `/api/places/:id` | 详情 + 全部 visits |
 | POST | `/api/places` | 建地点；`external_id` 命中则**追加 visit** 并返回 `{place, visit, deduped:true}` |
-| PATCH | `/api/places/:id` | 改名/改类型/改坐标等 |
 | DELETE | `/api/places/:id` | 级联删 visits |
 | POST | `/api/places/:id/visits` | 新增到访（"再去一次"） |
-| PATCH/DELETE | `/api/visits/:id` | 编辑/删除单次到访 |
+| DELETE | `/api/visits/:id` | 删除单次到访；**若是该地点最后一条，连带删除地点**，返回 `{ place_deleted: true }` |
 | GET | `/api/search` | 高德代理：`?keyword=&lng=&lat=&radius=&type=`；有关键词走 `place/text`，有坐标+半径走 `place/around`；结果附 `existing_place_id` |
 | GET | `/api/regeo` | 逆地理编码：坐标 → 城市名/adcode/区县 |
-| GET | `/api/cities` | 去过的城市列表 + 每城 `restaurant_count`/`attraction_count`/`last_visited_on` |
-| GET | `/api/cities/geo` | 去过的城市的 GeoJSON（服务端合并、缓存到 `data/geo/`） |
-| POST/DELETE | `/api/cities/manual` | 补标 / 取消补标城市 |
-| GET | `/api/stats` | 三个数字（+ `visit_total` 备用） |
+| GET | `/api/cities` | 去过的城市列表 + 每城 `restaurant_count`/`spot_count`/`last_visited_on` |
+| GET | `/api/cities/geo` | 地级市 GeoJSON（按省缓存、全国轮廓，服务端归一化后合并下发） |
+| POST / DELETE | `/api/cities/manual` | 补标 / 取消补标城市 |
+| GET | `/api/stats` | 三个数字 |
+
+**明确不做**：`PATCH /api/places/:id`（地点编辑）、`PATCH /api/visits/:id`（到访编辑）、`?year=`（年份筛选）、`?city=`（城市筛选）、`stats.visit_total`。
 
 ### 4.3 高德代理层（`server/amap.ts`）
 
-- `searchText` / `searchAround` / `regeo` 三个函数，统一：注入 `key=AMAP_WEB_KEY`、`city_limit=false`、超时 5s、失败重试 1 次；
-- 错误映射：高德 `infocode` → 中文可读错误（`10001` key 错误、`10003` 超配额、`10009` 权限不足等），前端 toast 直接可读；
-- **缓存**：`place/text|around` 的响应用内存 LRU（键＝参数串，TTL 10min）+ 结果里的 POI 详情落 `place` 表时即为长期缓存；同一家店第二次搜索秒出；
-- `/_AMapService/*` 反向代理：转发到 `https://restapi.amap.com/*`，**追加 `jscode=AMAP_SECURITY_CODE` 的同时必须补 `platform=JS&s=rsv3`**（实测只加 `jscode` 会返回 `10009 USERKEY_PLAT_NOMATCH`），仅允许 `GET`，5s 超时。
+- `searchText` / `searchAround` / `regeo` / `district` 四个函数，统一：注入 `key=AMAP_WEB_KEY`、`city_limit=false`、超时 5s、失败重试 1 次；
+- **类型映射**：`/api/search?type=restaurant` 传 `types=050000`，`type=spot` 传 `050000` 之外的白名单（`110000`（风景名胜）/`140000`（科教文化）等，实现时按 typecode 前缀过滤）；返回结果只保留可归类项（`05*` → restaurant，`11*/14*` → spot），其余丢弃；
+- 错误映射：高德 `infocode` → 中文可读错误（`10001` key 错误、`10003` 超配额、`10008/10009` 安全密钥或平台不匹配等），前端 toast 直接可读；
+- **缓存**：`place/text|around` 的响应用内存 LRU（键＝参数串，TTL 10min）+ 结果里的 POI 详情落 `place` 表时即为长期缓存；
+- **城市字典**：启动时用 `/v3/config/district?keywords=中国&subdistrict=2`（实测 55KB）同步一次到 `city_dict`，归一化：直辖市的伪城市（上海城区 `310100`、重庆城区/郊县 `500100/500200`）折叠到省级 adcode；之后按名称本地匹配，无需再请求；
+- `/_AMapService/*` 反向代理：转发到 `https://restapi.amap.com/*`，**追加 `jscode=AMAP_SECURITY_CODE` + `platform=JS&s=rsv3`**，仅允许 `GET`，5s 超时。
 
-### 4.4 运行与运维
+### 4.4 边界数据（`server/geo.ts`）
 
-- 启动横幅：打印 `本机 http://localhost:8787`、枚举所有非回环 IPv4 的 `http://<ip>:8787`、一个 ASCII 二维码（`qrcode-terminal`），并尝试自动打开默认浏览器；
-- 端口占用：`EADDRINUSE` → 打印"程序似乎已在运行，已为你打开浏览器"并 `exit(0)`；
-- 数据库：`data/orbit.db`，WAL 模式；启动时执行 `schema.sql`（幂等 `IF NOT EXISTS`）；备份 = 复制 `data/` 目录；
-- 日志：请求行 + 错误堆栈打到 `stdout`（控制台保留，方便你看）；
+- 源：`https://geo.datav.aliyun.com/areas_v3/bound/<adcode>_full.json`，逐省（33 个可用，台湾 404）。
+- 归一化：直辖市跳过其 `district` 级要素，改用 `<adcode>.json`（省级整体轮廓，如上海 21KB）；其余 `level=city` 要素照收（含省直辖县级市、海南各县）。
+- 缓存：`data/geo/prov_<adcode>.json` 原样落盘 + `data/geo/index.json` 记录已完成省份；`/api/cities/geo` 只下发已缓存部分，前端按进度提示补齐。
+- 首次全量约 **3.68MB**，之后零网络请求。
+
+### 4.5 运行与运维
+
+- 启动自检：`.env` 三项 key 缺任一 → 中文指引 + `exit(1)`；`PORT` 非法 → 退出。
+- 启动横幅：打印 `本机 http://localhost:8787`、所有非回环 IPv4 的 `http://<ip>:8787`、ASCII 二维码（`qrcode-terminal`）、并提示「手机需与电脑同一 WiFi，首次连接请在 Windows 防火墙弹窗选『专用网络』」；尝试自动打开默认浏览器。
+- 端口占用：`EADDRINUSE` → 打印「程序似乎已在运行，已为你打开浏览器」并 `exit(0)`。
+- 数据库：`data/orbit.db`，WAL 模式；启动时执行 `schema.sql`（幂等 `IF NOT EXISTS`）；备份 = 复制 `data/` 目录。
+- 日志：请求行 + 错误堆栈打到 `stdout`（控制台保留，方便你看）。
 - 不做认证（仅监听局域网，不做端口转发）。
 
-### 4.5 Windows 交付
+### 4.6 Windows 交付（git 直连，不再打包 zip）
 
-`启动.bat`（约 30 行，纯检测 + 调用，不写复杂逻辑）：
+流程：`git pull` → 首次 `npm install` → 双击 `启动.bat`。
+
+`启动.bat`（约 30 行，纯检测 + 调用）：
 
 1. `chcp 65001` + 设置窗口标题；
-2. `node -v` 版本检测，主版本 `< 24` → 打印安装指引 + `pause` 退出；
-3. `node_modules` 不存在 → 打印"请先执行 npm install"并 `pause`（**不自动装**，按确认结论：报错让我手动装）；
-4. `web/dist` 不存在 → 自动 `npm run build`；
-5. `node server\index.ts`（控制台保持打开，关窗即停止）。
+2. `node -v` 主版本 `< 24` → 打印安装指引 + `pause` 退出；
+3. `node_modules` 不存在 → 打印「请先执行 npm install」并 `pause`（不自动装）；
+4. `.env` 不存在 → 打印「请复制 .env.example 为 .env 并填写三个 key」并 `pause`；
+5. `web/dist` 不存在 → 自动 `npm run build`；
+6. `node server\index.ts`（控制台保持打开，关窗即停止）。
 
 `开发.bat`（可选）：`npm run dev`（Vite HMR `5173`，`/api` 代理到 `8787`）+ 后端并行。
-
-`scripts/pack.mjs`：把源码（排除 `node_modules`、`web/dist`、`data`、`.env`）打成 `/home/VMShare/BinaryOrbit-src.zip`，供 Windows 解压覆盖；`data/` 不在包内，因此覆盖不会丢数据。
+**不提供** `scripts/pack.mjs`（zip 中转已取消）。
 
 ## 5. 测试设计
 
-### 5.1 M0 Spike（开工第一小时，唯一可能推翻架构的风险点）
+### 5.1 开工前验证（原 M0 Spike，已全部通过）
 
-| 检查项 | 通过标准 | 失败时退路 |
-|---|---|---|
-| JSAPI 在 `http://<IP>:8787` 下加载 | 地图渲染成功、无 key 报错 | 白名单留空只靠 `jscode` 代理；仍失败则改 Leaflet + 高德瓦片代理 |
-| `/_AMapService` 代理注入 `jscode` | JSAPI 内部请求全部 200 | 改为前端明文 `securityJsCode`（局域网自用可接受） |
-| `node:sqlite` + Hono 起服务 | `/api/health` 返回 200 | 换 `better-sqlite3`（Windows 有预编译包） |
-| DataV 地级市 GeoJSON 可下载并缓存 | 生成 `data/geo/*.json`，二次启动不联网 | 改用高德 `config/district?extensions=all`（消耗配额） |
+| 检查项 | 实测结果 |
+|---|---|
+| JSAPI 在 `http://<IP>:<port>` 下加载 | ✅ 地图 `complete`，无 key 报错；`PlaceSearch` 走代理成功 |
+| `/_AMapService` 代理注入密钥 | ✅ 需 `jscode + platform=JS&s=rsv3`；只加 `jscode` → `10009` |
+| `node:sqlite` + Hono 起服务 | ✅ `node:sqlite` 免 flag 可用 |
+| DataV 地级市 GeoJSON | ✅ 33/34 省可下（3.68MB/475 要素），二次启动零请求；台湾 404 |
+| `AMap.GeoJSON` + `AMap.MarkerCluster` | ✅ 均可渲染（江苏 13 市验证通过） |
+| 内置/自定义地图样式 | ❌ `mapStyle` 被忽略、`/v4/map/styles2` 返回 `10002` → 改用 CSS 滤镜 |
+| 高德瓦片直连（Leaflet 退路） | ✅ `webrd0X.is.autonavi.com` 无 key 返回 PNG |
 
 ### 5.2 后端集成测试（`node --test`，内置运行器，高德 API 全部 mock）
 
 1. 新建 place + 首次 visit 成功，`external_id` 唯一；
 2. 同 `external_id` 二次 POST → 不新建 place、追加 visit、返回 `deduped:true`；
 3. 手选点（`external_id=null`）可建多条，互不干扰；
-4. `PATCH visit` / `DELETE visit` 生效，`place` 的 `visit_count` 随之变化；
-5. `DELETE place` 级联删除 visits；
-6. `/api/stats` 三个数字口径正确（含"同一店多次到访只算一家店"）；
-7. 城市反推：`place.city_adcode` 去重 + `city_manual` 并集、去重、计数正确；
-8. `/api/search` 正确在 `keyword` 与 `around` 两种模式间切换，并附 `existing_place_id`；
-9. 高德 mock 返回 `infocode=10003` → 接口返回可读中文错误、HTTP 502，不崩进程；
-10. `GET /api/places` 的筛选（type / city / year）与排序正确。
+4. `DELETE visit` 生效，place 的 `visit_count` 随之变化；
+5. 删除某地点**最后一条** visit → 返回 `place_deleted:true` 且地点被删；
+6. `DELETE place` 级联删除 visits；
+7. `POST /api/cities/manual` / `DELETE` 生效，城市并集口径正确（含直辖市归一化：`310101` 落库为 `310000`）；
+8. `/api/stats` 三个数字口径正确（同一店多次到访只算一家店）。
 
 ### 5.3 手动验收清单（Windows，约 5 分钟）
 
-1. `node -v` = v24.x；
+1. `node -v` = v24.x；`git pull` 无冲突；
 2. `npm install` 成功（失败 → 贴报错）；
-3. 双击 `启动.bat` → 控制台出现本机地址 + 手机地址 + 二维码，浏览器自动打开；
-4. 手机同 WiFi 扫码 → 地图显示正常（**这是 key 白名单实测点**）；
-5. 「搜这一带」→ 选一家 → 保存 → 标记出现；再搜同一家 → 显示"已记录"，保存后到访次数变 2；
-6. 切城市 Tab → 该城市被点亮；统计浮窗三个数字同步变化；
-7. 关闭窗口 → 服务停止；重启后数据仍在（`data\orbit.db`）。
+3. 复制 `.env.example` → `.env` 填好三个 key；
+4. 双击 `启动.bat` → 控制台出现本机地址 + 手机地址 + 二维码，浏览器自动打开；
+5. 手机同 WiFi 扫码 → 地图显示正常（**这是 key 白名单实测点**）；
+6. 「搜索附近」→ 选一家 → 保存 → 标记出现；再搜同一家 → 显示「已记录」，保存后到访次数变 2；
+7. 详情抽屉删掉某地点的唯一一条到访 → 地点消失、统计同步；
+8. 切城市 Tab → 全国轮廓加载完成、该城市被点亮、未点亮城市可点「点亮」；统计浮窗三个数字同步；
+9. 关闭窗口 → 服务停止；重启后数据仍在（`data\orbit.db`）。
+
+### 5.4 前端冒烟
+
+用 `agent-browser` 做一次性冒烟（起服务 → 打开页面 → 录一条 → 验统计 → 切城市页 → 截图存档），步骤记录在 `scripts/smoke.md`，**不引入 Playwright/Puppeteer 依赖、不进 CI**。
 
 ## 6. 待办需求
 
 ### 6.1 需要你做的事
 
-- [ ] 高德开放平台注册 + **个人实名认证**，创建两个 key：`Web端(JS API)` 与 `Web服务`，并记下 JSAPI 的**安全密钥**；
-- [ ] Windows 宿主机安装 **Node 24 LTS**（勾选 Add to PATH）；
-- [ ] 把 zip 解压到 `C:\dev\BinaryOrbit` 后执行一次 `npm install`；
-- [ ] 首次运行后确认防火墙弹窗选择「专用网络」，否则手机连不上。
+- [x] 高德开放平台注册 + 个人实名认证，创建两个 key（Web端 JS API / Web服务）并记下安全密钥
+- [x] 确认 Web端 key 的**域名白名单为空**（否则局域网 IP 访问会 `INVALID_USER_DOMAIN`）
+- [ ] Windows 宿主机安装 **Node 24 LTS**（勾选 Add to PATH）
+- [ ] `git pull` 后首次执行 `npm install`
+- [ ] 复制 `.env.example` → `.env` 并填写三个 key（不入库）
+- [ ] 首次运行后确认防火墙弹窗选择「专用网络」，否则手机连不上
 
 ### 6.2 二期 Backlog
 
-- 时间轴筛选（滑块/年份切换）与"年度总结"页
+- 编辑地点信息、编辑单条到访（本轮已明确不做）
+- 长按/右键地图空白处记点、补标城市搜索、城市→地图筛选联动
+- 自定义地图样式（控制台建样式 → 给 styleId，替换 CSS 滤镜）
+- 时间轴筛选（滑块/年份切换）与"年度总结"页（`?year=` 接口届时再加）
 - 到访照片墙、相册上传与压缩
 - 统计增强：评分榜、最近一次卡片、按价位估算的总花费区间
 - 只读分享页 / 生成年度海报（需 HTTPS 或长链接方案）
