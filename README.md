@@ -98,32 +98,53 @@
 
 在地址后面加 `?debug=1`（例如 `http://<电脑IP>:8787/map?debug=1`），左下角会出现一个自检面板，实时显示：
 
-- **帧率**：当前 fps、这期间的最低 fps、最差帧耗时（绿 ≥50 / 橙 30–50 / 红 <30）
-- **长任务**：主线程被占据超过 50ms 的次数与最长耗时
-- **地图**：高德每秒重绘多少帧，以及用的是 WebGL 画布还是栅格瓦片
-- **标记**：当前标记（含聚合）数量、上一次重建耗时
-- **环境**：dpr、视口尺寸、构建时间戳
+- **帧率**：当前 fps、这期间最低 fps、卡顿（单帧 ≥200ms）次数
+- **主线程**：50ms 定时器的最大漂移（iOS 不支持 `longtask`，用这个代替），以及长任务统计
+- **地图**：高德每秒重绘多少帧、用的是 WebGL 画布还是栅格瓦片、当前 zoom
+- **标记**：已画出的标记数 / 地点总数、上一次重建耗时
+- **环境**：dpr、视口尺寸、构建时间戳、当前 URL 参数
 
-进页面 8 秒后会自动上报一次，之后每 20 秒一次（报的是这段时间里的最差值）；也可以拖动几下后点面板上的「上报到电脑控制台」。上报内容会直接打印在 `启动.bat` 那个窗口里，形如：
+进页面 8 秒后自动上报一次，之后每 20 秒一次（报的是这段时间里的最差值）；也可以拖动几下后点面板上的「上报到电脑控制台」。上报内容会直接打印在 `启动.bat` 那个窗口里，形如：
 
 ```
   [diag] 收到浏览器端诊断
+         reason           手动上报
          build            2025-11-08 23:12
+         query            ?debug=1&dpr=1
          fps              60
-         minFps           24
-         worstFrameMs     133
-         longTasks        5
-         maxTaskMs        210
-         mapFramesPerSec  18
+         minFps           3
+         worstFrameMs     384
+         frozenFrames     6
+         loopLagMs        340
+         mapFramesPerSec  12
+         mapFramesMax     46
          renderer         webgl
-         markers          12
-         lastRebuildMs    6
+         markers          0
+         places           10
+         zoom             12
          dpr              2
-         viewport         1024x1366
+         viewport         1373x816
          touchPoints      5
+         slowResources    ["820ms jsapi-data2.amap.com/tile/..."]
 ```
 
-几个典型判断：`minFps` 低 + `longTasks` 多 → 主线程被 JS 占住；`minFps` 低但 `mapFramesPerSec` 只有几帧 → 高德/网络在卡；`fps` 一直 60 但看起来一顿一顿 → 是 GPU 合成（canvas 尺寸、叠加层）的问题。
+怎么读：
+
+- `minFps` 低 + `frozenFrames` 多 + `loopLagMs` 也大 → 主线程被占着（高德渲染 JS 或我们的代码）；
+- `minFps` 低但 `loopLagMs` 很小 → 主线程没事，卡在 GPU / 合成器；
+- `mapFramesPerSec` 只有几帧、`slowResources` 里有高德瓦片 → 在等网络；
+- `places` 有值但 `markers` 是 0 → 不是数据没了，是筛选或未重建，把 `filter` 切回「全部」。
+
+### 两个对照开关
+
+卡顿主要花在高德底图时，用这两个参数做 A/B（可以和 `?debug=1` 一起用）：
+
+| 参数 | 作用 | 代价 |
+|---|---|---|
+| `dpr=1` | 让高德按 1x 而不是 dpr 2 渲染（iPad 上像素量降到 1/4） | 文字/线条略软 |
+| `lean=1` | 底图只留底色和道路（`features: ['bg','road']`，关注记） | 看不到底图 POI；只对 WebGL 渲染生效 |
+
+例如 `.../map?debug=1&dpr=1`，拖同样的距离，看 `minFps` / `frozenFrames` 有没有明显改善。上报里的 `query` 字段会记下当时用的参数。
 
 另外启动横幅里会打一行 `前端 index-xxxxx.js · 构建时间`：手机上报的 `build` 应该和它一致，不一致就说明手机上跑的是旧前端（换个页面/强制刷新）。
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { installMapTint, loadAMap } from '../lib/amap.ts';
+import { installMapTint, loadAMap, mapRenderOptions } from '../lib/amap.ts';
 import { diagState } from '../lib/diag.ts';
 import { shortName } from '../lib/format.ts';
 import type { AppConfig, FilterKind, MapApi, MapViewport, Place } from '../lib/types.ts';
@@ -176,6 +176,8 @@ function rebuildMarkers(): void {
   for (let i = used; i < slots.length; i++) slots[i]?.marker.hide();
 
   diagState.markers = used;
+  diagState.places = props.places.length;
+  diagState.zoom = map.value?.getZoom?.() ?? diagState.zoom;
   diagState.rebuildMs = performance.now() - started;
 }
 
@@ -207,6 +209,7 @@ function syncLabels(): void {
   const current = map.value?.getZoom() ?? 0;
   zoom.value = current;
   labelsOn.value = current >= 13;
+  diagState.zoom = current;
 }
 
 function syncCircle(): void {
@@ -264,6 +267,7 @@ onMounted(async () => {
   }
   if (!host.value) return;
 
+  const renderOptions = mapRenderOptions();
   const instance = new AMap.Map(host.value, {
     zoom: props.initialView.zoom,
     center: [props.initialView.lng, props.initialView.lat],
@@ -273,6 +277,8 @@ onMounted(async () => {
     pitchEnable: false,
     resizeEnable: true,
     zooms: [3, 18],
+    // ?lean=1：只画底色和道路，用来判断卡顿是不是底图矢量要素太多
+    ...(renderOptions.lean ? { features: ['bg', 'road'], showLabel: false } : {}),
   });
   map.value = instance;
   ready.value = true;

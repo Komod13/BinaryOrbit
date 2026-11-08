@@ -17,6 +17,8 @@ export const diagState = {
   /** 地图渲染器：移动 UA 下高德走 WebGL 画布，桌面 UA 下走栅格瓦片 */
   renderer: '?',
   markers: 0,
+  places: 0,
+  zoom: 0,
   rebuildMs: 0,
   /** 地图 move / mapmove 等事件计数，由面板换算成「每秒重绘次数」 */
   mapFrames: 0,
@@ -26,8 +28,11 @@ export const diagState = {
 const windowStats = {
   minFps: 60,
   worstFrameMs: 0,
+  frozenFrames: 0,
   longTasks: 0,
   maxTaskMs: 0,
+  /** 主线程事件循环延迟（定时器漂移），iOS 上代替 longtask 用 */
+  maxLoopLagMs: 0,
   mapFpsMin: 0,
   mapFpsMax: 0,
 };
@@ -35,8 +40,10 @@ const windowStats = {
 function resetWindowStats(): void {
   windowStats.minFps = 60;
   windowStats.worstFrameMs = 0;
+  windowStats.frozenFrames = 0;
   windowStats.longTasks = 0;
   windowStats.maxTaskMs = 0;
+  windowStats.maxLoopLagMs = 0;
   windowStats.mapFpsMin = 0;
   windowStats.mapFpsMax = 0;
 }
@@ -87,14 +94,47 @@ export function installDiag(): void {
   let fps = 0;
   let mapFramesStart = diagState.mapFrames;
   let mapFps = 0;
+  let lastReportAt = windowStart;
 
-  const snapshot = (reason: string): Record<string, unknown> => ({
+  // 主线程是否被霸占：50ms 定时器漂移多少，就是主线程被卡住多久。
+  // iOS 不支持 longtask，这个在任何浏览器都能用。
+  let nextTick = performance.now() + 50;
+  setInterval(() => {
+    const now = performance.now();
+    windowStats.maxLoopLagMs = Math.max(windowStats.maxLoopLagMs, now - nextTick);
+    nextTick = now + 50;
+  }, 50);
+
+  /** 慢请求：只看两次上报之间、超过 250ms 的资源，用来分辨「卡在等高德瓦片」 */
+  const slowResources = (since: number): string[] => {
+    const rows = performance
+      .getEntriesByType('resource')
+      .filter((entry) => entry.startTime >= since && entry.duration >= 250)
+      .sort((a, b) => b.duration - a.duration)
+      .slice(0, 5)
+      .map((entry) => {
+        let label = entry.name;
+        try {
+          const url = new URL(entry.name);
+          label = `${url.host}${url.pathname.slice(-24)}`;
+        } catch {
+          /* 保持原样 */
+        }
+        return `${Math.round(entry.duration)}ms ${label}`;
+      });
+    return rows;
+  };
+
+  const snapshot = (reason: string, withResources = false): Record<string, unknown> => ({
     reason,
     build: __BUILD_STAMP__,
     page: window.location.pathname,
+    query: window.location.search,
     fps,
     minFps: windowStats.minFps,
     worstFrameMs: Math.round(windowStats.worstFrameMs),
+    frozenFrames: windowStats.frozenFrames,
+    loopLagMs: Math.round(windowStats.maxLoopLagMs),
     longTasks: windowStats.longTasks,
     maxTaskMs: Math.round(windowStats.maxTaskMs),
     mapFramesPerSec: mapFps,
@@ -102,10 +142,13 @@ export function installDiag(): void {
     mapFramesMax: windowStats.mapFpsMax,
     renderer: diagState.renderer,
     markers: diagState.markers,
+    places: diagState.places,
+    zoom: diagState.zoom,
     lastRebuildMs: Math.round(diagState.rebuildMs),
     dpr: window.devicePixelRatio,
     viewport: `${window.innerWidth}x${window.innerHeight}`,
     touchPoints: navigator.maxTouchPoints,
+    ...(withResources ? { slowResources: slowResources(lastReportAt) } : {}),
   });
 
   const button = panel.querySelector<HTMLButtonElement>('.diag-report');
@@ -122,11 +165,12 @@ export function installDiag(): void {
       const response = await fetch('/api/diag', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(snapshot(reason)),
+        body: JSON.stringify(snapshot(reason, true)),
       });
       if (fromButton && button) {
         button.textContent = response.ok ? '已上报，看电脑控制台' : '上报失败';
       }
+      lastReportAt = performance.now();
       resetWindowStats();
     } catch {
       if (fromButton && button) button.textContent = '上报失败（连不上服务）';
@@ -153,6 +197,7 @@ export function installDiag(): void {
     previous = now;
     worstGap = Math.max(worstGap, gap);
     windowStats.worstFrameMs = Math.max(windowStats.worstFrameMs, gap);
+    if (gap >= 200) windowStats.frozenFrames++;
 
     const elapsed = now - windowStart;
     if (elapsed >= 500) {
@@ -168,10 +213,10 @@ export function installDiag(): void {
       const level = fps >= 50 ? 'good' : fps >= 30 ? 'warn' : 'bad';
       panel.dataset.level = level;
       put('build', __BUILD_STAMP__);
-      put('fps', `${fps} fps（最低 ${windowStats.minFps}）· 最差帧 ${Math.round(windowStats.worstFrameMs)}ms`);
-      put('tasks', `长任务 ${windowStats.longTasks} 次 · 最长 ${Math.round(windowStats.maxTaskMs)}ms`);
-      put('map', `地图 ${mapFps} 帧/s · ${diagState.renderer}`);
-      put('markers', `标记 ${diagState.markers} 个 · 重建 ${Math.round(diagState.rebuildMs)}ms`);
+      put('fps', `${fps} fps（最低 ${windowStats.minFps}）· 卡顿 ${windowStats.frozenFrames} 次`);
+      put('tasks', `主线程延迟 ${Math.round(windowStats.maxLoopLagMs)}ms · 长任务 ${windowStats.longTasks}`);
+      put('map', `地图 ${mapFps} 帧/s · ${diagState.renderer} · zoom ${diagState.zoom}`);
+      put('markers', `标记 ${diagState.markers}/${diagState.places} · 重建 ${Math.round(diagState.rebuildMs)}ms`);
       put('env', `dpr ${window.devicePixelRatio} · ${window.innerWidth}×${window.innerHeight}`);
       window.__boDiag = snapshot('实时');
       frames = 0;

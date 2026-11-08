@@ -4,6 +4,8 @@ declare global {
   interface Window {
     AMap?: any;
     _AMapSecurityConfig?: { serviceHost: string };
+    /** 高德内部用来判断高分屏的标记（见 loadAMap 里的注释） */
+    detectRetina?: number;
   }
 }
 
@@ -44,13 +46,36 @@ function absoluteServiceHost(config: AppConfig): string {
   return new URL(config.serviceHost, window.location.origin).href.replace(/\/+$/, '');
 }
 
-/** 注入 JSAPI 2.0 脚本，并把安全密钥的验证交给后端代理。 */
+/** 地图渲染选项的实验开关（由 URL 参数控制，不写存量配置）。 */
+export interface MapRenderOptions {
+  /** 强制底图按 1x 渲染（iPad 上像素量降到 1/4，画面会略软） */
+  lowRes: boolean;
+  /** 精简底图：只留底色与道路，不要 POI / 注记 */
+  lean: boolean;
+}
+
+export function mapRenderOptions(search = window.location.search): MapRenderOptions {
+  const params = new URLSearchParams(search);
+  return {
+    lowRes: params.get('dpr') === '1',
+    lean: params.has('lean'),
+  };
+}
+
+/**
+ * 注入 JSAPI 2.0 脚本，并把安全密钥的验证交给后端代理。
+ *
+ * 注意：高德在脚本初始化时读一次 `window.detectRetina`，决定按 1x 还是 dpr 倍渲染。
+ * iPad（dpr 2）上按 2x 渲染等于画 4 倍像素，WebGL 很容易画不动；`?dpr=1` 把它压回 1x。
+ * 所以必须在脚本执行前设置，不能等 AMap 加载完再改。
+ */
 export function loadAMap(config: AppConfig): Promise<any> {
   if (window.AMap) return Promise.resolve(window.AMap);
   if (loading) return loading;
 
   loading = new Promise((resolve, reject) => {
     window._AMapSecurityConfig = { serviceHost: absoluteServiceHost(config) };
+    if (mapRenderOptions().lowRes) window.detectRetina = 0;
     const script = document.createElement('script');
     script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(config.jsKey)}&plugin=AMap.GeoJSON`;
     script.async = true;
