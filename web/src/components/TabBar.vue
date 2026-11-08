@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router';
-import Icon from './Icon.vue';
+import pinIcon from '../assets/icons/pin.png';
+import shoeIcon from '../assets/icons/shoe.png';
 
 const route = useRoute();
 
 const tabs = [
-  { name: 'map', to: '/map', label: '地图', icon: 'map' },
-  { name: 'cities', to: '/cities', label: '城市', icon: 'city' },
+  { name: 'map', to: '/map', label: '地图', icon: pinIcon },
+  { name: 'cities', to: '/cities', label: '城市', icon: shoeIcon },
 ] as const;
 </script>
 
@@ -20,7 +21,7 @@ const tabs = [
       :class="{ 'is-active': route.name === tab.name }"
       :aria-current="route.name === tab.name ? 'page' : undefined"
     >
-      <Icon :name="tab.icon" />
+      <img class="tab-icon" :src="tab.icon" alt="" aria-hidden="true" />
       <span>{{ tab.label }}</span>
     </router-link>
   </nav>

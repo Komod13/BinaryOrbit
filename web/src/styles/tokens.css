@@ -14,15 +14,20 @@
   --accent-soft: #f4ecf4;
   --accent-rgb: 201, 161, 200;
 
-  --rest: #c0510b;
+  /* 餐厅 / 景点标记底色：比原来淡一档，白底图标压上去更干净 */
+  --rest: #d4783a;
   --rest-ink: #8a3a08;
-  --rest-soft: #f9ede3;
-  --rest-rgb: 192, 81, 11;
+  --rest-soft: #fbf0e7;
+  --rest-rgb: 212, 120, 58;
 
-  --spot: #057d5f;
+  --spot: #2f9a7c;
   --spot-ink: #045c46;
-  --spot-soft: #e7f2ed;
-  --spot-rgb: 5, 125, 95;
+  --spot-soft: #e9f5f0;
+  --spot-rgb: 47, 154, 124;
+
+  /* 聚合气泡：粉色饱和度更深，与 --accent（浅紫填充）分开 */
+  --cluster-bg: #b365b2;
+  --cluster-rgb: 179, 101, 178;
 
   --danger: #a1283c;
   --danger-soft: #fbeef0;

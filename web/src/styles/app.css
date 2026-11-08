@@ -153,6 +153,7 @@ select {
   gap: 7px;
   height: 46px;
   padding: 0 18px;
+  white-space: nowrap;
   border-radius: 999px;
   font-size: 13.5px;
   color: var(--ink-2);

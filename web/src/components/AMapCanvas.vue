@@ -3,7 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { loadAMap } from '../lib/amap.ts';
 import { shortName } from '../lib/format.ts';
 import type { AppConfig, FilterKind, MapApi, MapViewport, Place } from '../lib/types.ts';
-import { iconPaths } from '../lib/icons.ts';
+import burgerIcon from '../assets/icons/burger.png';
+import cameraIcon from '../assets/icons/camera.png';
 
 const props = withDefaults(
   defineProps<{
@@ -69,10 +70,9 @@ function makePin(place: Place): HTMLDivElement {
   if (highlight.value.size) {
     element.classList.add(highlight.value.has(place.cityAdcode ?? '') ? 'is-highlight' : 'is-dim');
   }
-  const glyph = place.type === 'restaurant' ? iconPaths('bowl') : iconPaths('camera');
+  const icon = place.type === 'restaurant' ? burgerIcon : cameraIcon;
   element.innerHTML =
-    `<span class="pin-dot"><svg class="pin-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
-    `stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${glyph}</svg></span>` +
+    `<span class="pin-dot"><span class="pin-plate"><img class="pin-img" src="${icon}" alt="" /></span></span>` +
     `<span class="pin-label">${escapeHtml(shortName(place.name))}</span>`;
   element.title = place.name;
   element.addEventListener('click', (event) => {
