@@ -108,9 +108,13 @@ AMAP_WEB_KEY=
 PRICE_TIER_LOW=60
 # 高档下限（元/人）
 PRICE_TIER_HIGH=150
+# 可选：手机访问用的局域网地址；自动挑选不对时手动指定
+LAN_IP=
 ```
 
 启动自检：缺任何一个 `AMAP_*` 项，就打印中文指引（说明哪个 key 去哪儿申请）并 `exit(1)`，不会带着不完整的配置起服务。
+
+**手机地址的挑选**：Windows 上装了代理 / 虚拟机时，`networkInterfaces()` 的第一个地址经常是 Clash 的 `198.18.0.1` 或 WSL / VMware 的虚拟网卡，直接取第一个会让手机永远连不上。`server/net.ts` 改成打分：`192.168/16` > `10/8` > `172.16/12` > 公网 > `100.64/10`；`198.18/15`（代理 fake-ip）、`169.254/16`（没拿到 DHCP）直接负分，网卡名像 `Clash / WSL / VMware / TUN` 再降权。多个候选时横幅会把其余的列出来，并支持用 `.env` 的 `LAN_IP` 强制指定。
 
 ### 2.5 目录结构
 
@@ -125,6 +129,7 @@ BinaryOrbit/
 ├─ scripts/smoke.md      # agent-browser 冒烟步骤记录（不引入前端测试依赖）
 ├─ server/
 │  ├─ index.ts           # Hono 装配、静态托管、启动横幅（IP + 二维码 + 开浏览器）
+│  ├─ net.ts             # 挑手机能用的局域网地址（跳过代理/虚拟机网卡）
 │  ├─ db.ts              # node:sqlite 连接 + 迁移执行
 │  ├─ schema.sql
 │  ├─ amap.ts            # 高德 Web 服务封装（含限流/错误映射/城市字典）
@@ -344,6 +349,7 @@ npm scripts：
 |---|---|
 | JSAPI 在 `http://<IP>:<port>` 下加载 | ✅ 地图 `complete`，无 key 报错；`PlaceSearch` 走代理成功 |
 | `/_AMapService` 代理注入密钥 | ✅ 需 `jscode + platform=JS&s=rsv3`；只加 `jscode` → `10009` |
+| 局域网地址自动挑选 | ✅ 跳过 `198.18.0.1`（代理 TUN）、`169.254.x`；`192.168` 优先，支持 `LAN_IP` 覆盖 |
 | `node:sqlite` + Hono 起服务 | ✅ `node:sqlite` 免 flag 可用 |
 | DataV 地级市 GeoJSON | ✅ 33/34 省可下（3.68MB/475 要素），二次启动零请求；台湾 404 |
 | `AMap.GeoJSON` + `AMap.MarkerCluster` | ✅ 均可渲染（江苏 13 市验证通过） |

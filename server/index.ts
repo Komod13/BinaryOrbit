@@ -2,7 +2,6 @@ import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join } from 'node:path';
-import { networkInterfaces } from 'node:os';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -19,6 +18,7 @@ import { statsRoute } from './routes/stats.ts';
 import { searchRoute } from './routes/search.ts';
 import { regeoRoute } from './routes/regeo.ts';
 import { cityDictCount, syncCityDict } from './cities.ts';
+import { pickLanAddress } from './net.ts';
 
 const DIST_DIR = fileURLToPath(new URL('../web/dist', import.meta.url));
 const DIST_INDEX = join(DIST_DIR, 'index.html');
@@ -85,14 +85,6 @@ export function createApp() {
   return app;
 }
 
-function localIPv4(): string[] {
-  return Object.values(networkInterfaces())
-    .flat()
-    .filter((item): item is NonNullable<typeof item> => Boolean(item))
-    .filter((item) => item.family === 'IPv4' && !item.internal)
-    .map((item) => item.address);
-}
-
 function openBrowser(url: string): void {
   if (process.env.NO_OPEN === '1') return;
   const platform = process.platform;
@@ -106,18 +98,36 @@ function openBrowser(url: string): void {
 }
 
 function printBanner(port: number): void {
-  const lan = localIPv4();
+  const picked = pickLanAddress(undefined, process.env.LAN_IP);
   const local = `http://localhost:${port}`;
-  const phone = lan.length ? `http://${lan[0]}:${port}` : '（未检测到局域网 IP，请检查网络）';
+  const phone = picked.address ? `http://${picked.address}:${port}` : '（未检测到局域网 IP，请检查网络）';
 
   console.log('');
   console.log('  BinaryOrbit · 双星轨道');
   console.log(`  本机   ${local}`);
   console.log(`  手机   ${phone}`);
   console.log('');
-  if (lan.length) {
+  if (picked.address) {
     qrcode.generate(phone, { small: true }, (code) => console.log(code));
   }
+
+  // 有多个地址时把其余的列出来：Windows 上装代理 / 虚拟机会多出好几张网卡
+  const others = picked.candidates.filter((candidate) => candidate.address !== picked.address);
+  if (others.length) {
+    console.log(`  其他网卡   ${others.map((item) => `${item.address}（${item.name}）`).join('、')}`);
+    console.log('  手机连不上就用正确的那一个：在 .env 里加 LAN_IP=192.168.x.x 后重启');
+    console.log('');
+  }
+
+  if (picked.overrideError) {
+    console.log(`  [warn] ${picked.overrideError}`);
+    console.log('');
+  }
+  if (!picked.address) {
+    console.log('  没找到可用的局域网地址：确认已连上 WiFi / 路由器，或把地址写进 .env 的 LAN_IP');
+    console.log('');
+  }
+
   console.log('  手机需与电脑连同一个 WiFi；首次连接请在 Windows 防火墙弹窗里选「专用网络」。');
   console.log('');
 }
