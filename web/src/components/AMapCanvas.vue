@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { loadAMap, resolveLabels } from '../lib/amap.ts';
+import { isTouchEnvironment, loadAMap, resolveLabels } from '../lib/amap.ts';
 import type { LabelSettings } from '../lib/amap.ts';
 import { diagState } from '../lib/diag.ts';
 import { shortName } from '../lib/format.ts';
@@ -258,7 +258,7 @@ function emitView(): void {
  * 高 zoom 关掉」（iPad 实测高 zoom 的路名/POI 名会把主线程占住 300ms+）。高德 2.0 把注记
  * 放在独立的 Labels* 图层里，`layer.setVisible()` 就能切，不需要重建地图。
  */
-let labelSettings: LabelSettings = { mode: 'on', maxZoom: 12, touch: false };
+let labelSettings: LabelSettings = { mode: 'on', maxZoom: 12, touch: false, source: 'pc' };
 let labelLayers: any[] = [];
 let labelsVisibleNow: boolean | null = null;
 
@@ -318,8 +318,10 @@ onMounted(async () => {
   }
   if (!host.value) return;
 
-  labelSettings = resolveLabels(props.config);
-  diagState.mapOptions = `labels:${labelSettings.mode}<${labelSettings.maxZoom}>@${labelSettings.touch ? 'touch' : 'mouse'}`;
+  labelSettings = resolveLabels(props.config, undefined, isTouchEnvironment());
+  diagState.mapOptions =
+    `labels:${labelSettings.mode}<${labelSettings.maxZoom}>@${labelSettings.touch ? 'touch' : 'mouse'}` +
+    `/${labelSettings.source}`;
   const instance = new AMap.Map(host.value, {
     zoom: props.initialView.zoom,
     center: [props.initialView.lng, props.initialView.lat],

@@ -29,12 +29,30 @@ export interface LabelSettings {
   maxZoom: number;
   /** 是否按触屏设备（移动端）处理，仅用于 diag 展示 */
   touch: boolean;
+  /** 这个 mode 是谁定的：url 参数 / 移动端的 .env / PC 固定 on */
+  source: 'url' | 'env' | 'pc';
 }
 
-/** 是否有触屏（iPad / iPhone / 安卓、以及带触摸屏的笔记本）。 */
-export function isTouchEnvironment(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  return window.matchMedia('(any-pointer: coarse)').matches;
+/**
+ * 是否是移动端（iPad / iPhone / 安卓 / 鸿蒙）—— 只有这类设备才跟随 `.env` 的注记策略。
+ *
+ * 不能只看 `any-pointer: coarse`：Windows 触屏笔记本、接了触摸屏/数位板的台式机也会报 coarse，
+ * 结果 PC 被当成平板、zoom ≥12 就没注记了。这里按平台判定：
+ * - 移动 UA（含 Android / 鸿蒙）→ 移动端；
+ * - iPadOS 13+ 的「桌面版网站」UA 是 Macintosh，用触点数（>1）区分；
+ * - Windows / macOS / Linux 桌面（哪怕带触屏）→ 一律当 PC，注记始终显示。
+ */
+export function isTouchEnvironment(
+  nav: Pick<Navigator, 'userAgent' | 'platform' | 'maxTouchPoints'> | undefined = typeof navigator === 'undefined'
+    ? undefined
+    : navigator,
+): boolean {
+  if (!nav) return false;
+  const ua = nav.userAgent ?? '';
+  if (/iPad|iPhone|iPod|Android|OpenHarmony|HarmonyOS/i.test(ua)) return true;
+  // iPadOS 桌面模式：UA 伪装成 Mac，maxTouchPoints 是 5
+  if (/Macintosh/i.test(ua) && (nav.maxTouchPoints ?? 0) > 1) return true;
+  return false;
 }
 
 /**
@@ -50,18 +68,28 @@ export function resolveLabels(
 ): LabelSettings {
   const params = new URLSearchParams(search);
   const raw = params.get('labels');
-  const envMode: LabelsMode = touch ? config.mapLabels : 'on';
-  const mode: LabelsMode =
-    raw === 'on' || raw === '1'
-      ? 'on'
-      : raw === 'off' || raw === '0'
-        ? 'off'
-        : raw === 'auto'
-          ? 'auto'
-          : envMode;
+  let mode: LabelsMode;
+  let source: LabelSettings['source'];
+  if (raw === 'on' || raw === '1') {
+    mode = 'on';
+    source = 'url';
+  } else if (raw === 'off' || raw === '0') {
+    mode = 'off';
+    source = 'url';
+  } else if (raw === 'auto') {
+    mode = 'auto';
+    source = 'url';
+  } else if (touch) {
+    mode = config.mapLabels;
+    source = 'env';
+  } else {
+    // PC（鼠标设备）：固定全显示，`.env` 不影响
+    mode = 'on';
+    source = 'pc';
+  }
   const zoomOverride = Number(params.get('labelzoom'));
   const maxZoom = Number.isFinite(zoomOverride) && zoomOverride > 0 ? zoomOverride : config.mapLabelMaxZoom;
-  return { mode, maxZoom, touch };
+  return { mode, maxZoom, touch, source };
 }
 
 /** 注入 JSAPI 2.0 脚本，并把安全密钥的验证交给后端代理。 */

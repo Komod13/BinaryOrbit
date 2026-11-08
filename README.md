@@ -148,7 +148,7 @@ iPad 实测结论：高德 2.0 WebGL 的**矢量文字注记**会把主线程占
 
 调试时可以用 URL 参数临时覆盖（优先级高于 `.env`）：`?labels=on|off|auto`、`?labelzoom=13`，配合 `?debug=1` 的 `mapOptions` 字段能看到实际生效值。其中 `?labels=auto` 会让任何设备（包括桌面）都按 zoom 分级，方便对比。
 
-> PC 端（鼠标设备）永远显示注记：同一份 WebGL 渲染在 PC 上并不卡，没必要牺牲路名。带触摸屏的 Windows 笔记本会被当成触屏设备处理（可用 `MAP_LABELS=on` 或 `?labels=on` 覆盖）。
+> PC 端永远显示注记：同一份 WebGL 渲染在 PC 上并不卡，没必要牺牲路名。判断依据是**平台/UA**（Windows、macOS、Linux 一律按 PC 处理，哪怕机器带触摸屏），不是 `any-pointer: coarse`——后者在触屏笔记本上也会为真，曾把 PC 误判成平板。iPad（含「桌面版网站」UA）、iPhone、安卓、鸿蒙才跟随 `.env`。
 
 实现上没有重建地图：建图后找 `CLASS_NAME` 含 `Label` 的图层调 `setVisible()`，并在 `zoomend` 时同步，所以「低 zoom 显示、高 zoom 隐藏」是实时的。
 

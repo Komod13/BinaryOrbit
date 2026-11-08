@@ -160,6 +160,8 @@ export function installDiag(): void {
     dpr: window.devicePixelRatio,
     viewport: `${window.innerWidth}x${window.innerHeight}`,
     touchPoints: navigator.maxTouchPoints,
+    platform: navigator.platform,
+    input: `${matchMedia('(pointer: fine)').matches ? 'fine' : matchMedia('(pointer: coarse)').matches ? 'coarse' : 'none'}/${matchMedia('(hover: hover)').matches ? 'hover' : 'nohover'}`,
     ...(withResources ? { slowResources: slowResources(lastReportAt) } : {}),
   });
 

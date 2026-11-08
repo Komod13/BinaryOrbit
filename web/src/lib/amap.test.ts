@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveLabels } from './amap.ts';
+import { isTouchEnvironment, resolveLabels } from './amap.ts';
 import type { AppConfig } from './types.ts';
 
 const base: AppConfig = {
@@ -39,4 +39,35 @@ test('labelzoom 非法时回落 .env 的 MAP_LABEL_MAX_ZOOM', () => {
 test('touch 标记原样透出，供 diag 展示', () => {
   assert.equal(resolveLabels(base, '', true).touch, true);
   assert.equal(resolveLabels(base, '', false).touch, false);
+});
+
+test('isTouchEnvironment：按平台判定，带触屏的 PC 仍算桌面', () => {
+  const win = { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120', platform: 'Win32', maxTouchPoints: 10 };
+  assert.equal(isTouchEnvironment(win), false, '触屏笔记本/台式机');
+
+  const mac = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605.1.15', platform: 'MacIntel', maxTouchPoints: 0 };
+  assert.equal(isTouchEnvironment(mac), false);
+
+  const iPadDesktopMode = {
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 CriOS/157',
+    platform: 'MacIntel',
+    maxTouchPoints: 5,
+  };
+  assert.equal(isTouchEnvironment(iPadDesktopMode), true, 'iPadOS 桌面模式');
+
+  const ipad = { userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)', platform: 'iPad', maxTouchPoints: 5 };
+  assert.equal(isTouchEnvironment(ipad), true);
+
+  const iphone = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', platform: 'iPhone', maxTouchPoints: 5 };
+  assert.equal(isTouchEnvironment(iphone), true);
+
+  const android = { userAgent: 'Mozilla/5.0 (Linux; Android 14; SM-X710)', platform: 'Linux armv8l', maxTouchPoints: 5 };
+  assert.equal(isTouchEnvironment(android), true);
+});
+
+test('source 标出 mode 的来源：url / env / pc', () => {
+  assert.equal(resolveLabels(base, '', false).source, 'pc');
+  assert.equal(resolveLabels({ ...base, mapLabels: 'off' }, '', false).source, 'pc');
+  assert.equal(resolveLabels(base, '', true).source, 'env');
+  assert.equal(resolveLabels(base, '?labels=off', true).source, 'url');
 });

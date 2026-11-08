@@ -410,7 +410,9 @@ iPad / 手机上开不了 DevTools，所以把采样搬回电脑控制台：
 | `MAP_LABELS` | `auto` | 只作用于触屏设备：`auto` 按 zoom 分级、`on` 始终显示、`off` 始终隐藏；鼠标设备固定 `on`（PC 上同路径不卡，不牺牲路名） |
 | `MAP_LABEL_MAX_ZOOM` | `12` | `auto` 的上限 zoom（3–18） |
 
-PC 端（鼠标设备）固定 `on`，`.env` 只影响触屏设备；`?labels=on|off|auto` 可覆盖任何设备，便于对比。判断依据是 `any-pointer: coarse`（带触摸屏的 Windows 笔记本也会落进触屏分支）。
+PC 端固定 `on`，`.env` 只影响移动端；`?labels=on|off|auto` 可覆盖任何设备，便于对比。
+
+判定用 `isTouchEnvironment()`：移动 UA（iPad/iPhone/Android/鸿蒙）为真；iPadOS 13+ 的桌面模式 UA 是 Macintosh，用 `maxTouchPoints > 1` 区分；Windows/macOS/Linux 一律按 PC（**不能用 `any-pointer: coarse`**，触屏笔记本会误判）。`resolveLabels()` 返回 `source`（url / env / pc），diag 的 `mapOptions` 会显示成 `labels:on<12>@mouse/pc`，便于核对走了哪一支。
 
 实现（`resolveLabels()`，有单测覆盖鼠标/触屏/URL 覆盖三种情况）：构造时 `showLabel` 按 `mode !== 'off'` 给；`auto` 在 `complete` / `zoomend` 时找 `CLASS_NAME` 含 `Label` 的图层调 `setVisible()`（图层可能首帧后才挂上，带 200/600/1500/3000ms 退避重试），不重建地图。`mapLayers` / `labelLayers` / `labelsVisible` 随上报回传，便于核对。
 
