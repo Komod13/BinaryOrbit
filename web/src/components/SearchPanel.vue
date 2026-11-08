@@ -20,6 +20,8 @@ const emit = defineEmits<{
 }>();
 
 const RADIUS_OPTIONS = [500, 1000, 3000];
+/** 列表最多展示 8 条，避免一次把抽屉撑出屏幕 */
+const MAX_RESULTS = 8;
 const keyword = ref('');
 const query = ref('');
 
@@ -67,6 +69,9 @@ const results = computed<PoiResult[]>(() => {
     .filter((poi) => !activeType.value || poi.type === activeType.value)
     .sort((a, b) => (a.distance ?? Number.MAX_SAFE_INTEGER) - (b.distance ?? Number.MAX_SAFE_INTEGER));
 });
+
+const visibleResults = computed(() => results.value.slice(0, MAX_RESULTS));
+const truncated = computed(() => results.value.length > MAX_RESULTS);
 
 function search(): void {
   query.value = keyword.value.trim();
@@ -130,7 +135,7 @@ function pick(poi: PoiResult): void {
     <div class="results">
       <p v-if="loading" class="results-hint">正在找…</p>
       <button
-        v-for="poi in results"
+        v-for="poi in visibleResults"
         :key="poi.id"
         class="result"
         type="button"
@@ -147,6 +152,10 @@ function pick(poi: PoiResult): void {
         <span v-if="poi.existingPlaceId" class="badge">已记录</span>
         <Icon v-else name="chevron" :size="16" />
       </button>
+
+      <p v-if="truncated" class="results-hint">
+        共 {{ results.length }} 条，先显示最近 {{ MAX_RESULTS }} 条；缩小范围或换个关键词可以看更多。
+      </p>
 
       <div v-if="!loading && !results.length" class="empty-state">
         <p>

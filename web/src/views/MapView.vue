@@ -57,7 +57,13 @@ const placesQuery = useQuery({
 const places = computed(() => placesQuery.data.value ?? []);
 const placesLoaded = computed(() => placesQuery.isSuccess.value);
 
-const drawerOpen = computed(() => drawer.value.mode !== 'none');
+// 「搜索附近」用筛选栏下方的非模态浮窗（不改对话框），详情/表单仍走右侧栏或底部抽屉
+const sheetOpen = computed(
+  () =>
+    drawer.value.mode === 'detail' ||
+    drawer.value.mode === 'form-new' ||
+    drawer.value.mode === 'form-visit',
+);
 const searchRadius = computed(() => (drawer.value.mode === 'search' ? radius.value : null));
 
 const detailId = computed(() => (drawer.value.mode === 'detail' ? drawer.value.placeId : null));
@@ -223,8 +229,15 @@ function boundsView(rows: Place[]): MapViewport {
   };
 }
 
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && drawer.value.mode === 'search') closeDrawer();
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown));
+
 onBeforeUnmount(() => {
   if (moveTimer) clearTimeout(moveTimer);
+  window.removeEventListener('keydown', onKeydown);
 });
 
 const showEmptyHint = computed(
@@ -269,22 +282,27 @@ const showEmptyHint = computed(
         drawer = { mode: 'search' };
         probeCity(true);
       "
-      @focus-search="probeCity(true)"
+      @focus-search="
+        probeCity(true);
+        if (drawer.mode === 'search') closeDrawer();
+      "
     />
 
-    <SideSheet :open="drawerOpen" :compact="drawer.mode === 'search'" @close="closeDrawer">
-      <SearchPanel
-        v-if="drawer.mode === 'search' && center"
-        :center="center"
-        :filter="filter"
-        :radius="radius"
-        @update:radius="radius = $event"
-        @pick="onSearchPick"
-        @manual="onManualAdd"
-        @close="closeDrawer"
-      />
+    <SearchPanel
+      v-if="drawer.mode === 'search' && center"
+      class="dock-panel"
+      :center="center"
+      :filter="filter"
+      :radius="radius"
+      @update:radius="radius = $event"
+      @pick="onSearchPick"
+      @manual="onManualAdd"
+      @close="closeDrawer"
+    />
+
+    <SideSheet :open="sheetOpen" @close="closeDrawer">
       <PlaceDetailPanel
-        v-else-if="detailId !== null"
+        v-if="detailId !== null"
         :place-id="detailId"
         :tiers="config?.priceTiers ?? { low: 60, high: 150 }"
         @again="drawer = { mode: 'form-visit', place: $event }"

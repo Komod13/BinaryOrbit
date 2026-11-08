@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue';
 
-const props = withDefaults(defineProps<{ open: boolean; labelledBy?: string; compact?: boolean }>(), {
-  labelledBy: undefined,
-  compact: false,
-});
+const props = defineProps<{ open: boolean; labelledBy?: string }>();
 const emit = defineEmits<{ close: [] }>();
 
 const dialog = ref<HTMLDialogElement | null>(null);
@@ -35,7 +32,6 @@ function onBackdrop(event: MouseEvent): void {
   <dialog
     ref="dialog"
     class="sheet"
-    :class="{ 'sheet--compact': compact }"
     :aria-labelledby="labelledBy"
     @click="onBackdrop"
     @close="emit('close')"

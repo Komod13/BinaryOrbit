@@ -6,8 +6,8 @@ import shoeIcon from '../assets/icons/shoe.png';
 const route = useRoute();
 
 const tabs = [
-  { name: 'map', to: '/map', label: '地图', icon: pinIcon },
-  { name: 'cities', to: '/cities', label: '城市', icon: shoeIcon },
+  { name: 'map', to: '/map', label: '标记', icon: pinIcon },
+  { name: 'cities', to: '/cities', label: '足迹', icon: shoeIcon },
 ] as const;
 </script>
 
