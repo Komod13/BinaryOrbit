@@ -89,7 +89,7 @@ const LIST_SQL = `
 `;
 
 export function listPlaces(type: string | null): ReturnType<typeof toPlace>[] {
-  const rows = getDb().prepare(LIST_SQL).all({ type }) as Row[];
+  const rows = getDb().prepare(LIST_SQL).all({ type }) as unknown as Row[];
   return rows.map(toPlace);
 }
 
@@ -101,7 +101,7 @@ export function getPlaceRow(id: number): PlaceRow | null {
 function listVisits(placeId: number): VisitRow[] {
   return getDb()
     .prepare('SELECT * FROM visit WHERE place_id = ? ORDER BY visited_date DESC, id DESC')
-    .all(placeId) as VisitRow[];
+    .all(placeId) as unknown as VisitRow[];
 }
 
 export function visitCount(placeId: number): number {
@@ -164,7 +164,7 @@ export function insertVisit(placeId: number, input: Pick<PlaceInput, 'date' | 'r
       'INSERT INTO visit (place_id, visited_date, rating, price_tier, note) VALUES (?, ?, ?, ?, ?)',
     )
     .run(placeId, input.date, input.rating, input.priceTier, input.note);
-  const row = db.prepare('SELECT * FROM visit WHERE id = ?').get(Number(info.lastInsertRowid)) as VisitRow;
+  const row = db.prepare('SELECT * FROM visit WHERE id = ?').get(Number(info.lastInsertRowid)) as unknown as VisitRow;
   return row;
 }
 
@@ -191,7 +191,17 @@ placesRoute.get('/:id', (c) => {
   const id = Number(c.req.param('id'));
   const place = getPlaceRow(id);
   if (!place) return c.json({ error: '地点不存在' }, 404);
-  return c.json({ place: toPlace(place), visits: listVisits(id).map(toVisit) });
+  const visits = listVisits(id);
+  const lastRated = visits.find((visit) => visit.rating !== null);
+  return c.json({
+    place: toPlace({
+      ...place,
+      visit_count: visits.length,
+      last_visited_on: visits[0]?.visited_date ?? null,
+      last_rating: lastRated?.rating ?? null,
+    }),
+    visits: visits.map(toVisit),
+  });
 });
 
 placesRoute.post('/', async (c) => {

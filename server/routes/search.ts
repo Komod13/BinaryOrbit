@@ -44,7 +44,7 @@ searchRoute.get('/', async (c) => {
     const placeholders = ids.map(() => '?').join(',');
     const rows = getDb()
       .prepare(`SELECT id, external_id FROM place WHERE external_id IN (${placeholders})`)
-      .all(...ids) as ExistingRow[];
+      .all(...ids) as unknown as ExistingRow[];
     for (const row of rows) existing.set(row.external_id, row.id);
   }
 

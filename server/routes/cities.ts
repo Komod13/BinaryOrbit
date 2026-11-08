@@ -40,7 +40,7 @@ const CITIES_SQL = `
 `;
 
 export function listCities() {
-  const rows = getDb().prepare(CITIES_SQL).all() as CityRow[];
+  const rows = getDb().prepare(CITIES_SQL).all() as unknown as CityRow[];
   return rows
     .map((row) => {
       const name =
