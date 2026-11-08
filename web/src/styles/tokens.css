@@ -43,6 +43,8 @@
 
   --r-md: 14px;
   --r-lg: 20px;
+  /* 移动端底部卡片统一使用的大圆角（半屏时），全屏时由 JS 收到 0 */
+  --sheet-radius: 32px;
   --search-h: 52px;
   --dock-gap: 10px;
   --chip-h: 34px;

@@ -424,7 +424,7 @@
   padding: calc(8px + env(safe-area-inset-top)) 18px calc(20px + env(safe-area-inset-bottom));
   background: var(--paper);
   /* 上拉到全屏时由 JS 把圆角逐渐收到 0，避免全屏后顶部还缺两个角 */
-  border-radius: var(--sheet-top-radius, 26px) var(--sheet-top-radius, 26px) 0 0;
+  border-radius: var(--sheet-top-radius, var(--sheet-radius)) var(--sheet-top-radius, var(--sheet-radius)) 0 0;
   box-shadow: 0 -18px 50px rgba(24, 28, 25, 0.22);
   outline: none;
   /* 只允许上下滑动：禁用卡片被左右拖动 / 横向回弹 */
@@ -979,7 +979,7 @@ textarea:focus {
   overscroll-behavior: contain;
   padding: calc(8px + env(safe-area-inset-top)) 18px calc(20px + env(safe-area-inset-bottom));
   background: var(--paper);
-  border-radius: var(--sheet-top-radius, 26px) var(--sheet-top-radius, 26px) 0 0;
+  border-radius: var(--sheet-top-radius, var(--sheet-radius)) var(--sheet-top-radius, var(--sheet-radius)) 0 0;
   box-shadow: 0 -18px 50px rgba(24, 28, 25, 0.22);
   /* 只允许上下滑动：禁用卡片被左右拖动 / 横向回弹 */
   touch-action: pan-y;
@@ -1210,6 +1210,19 @@ textarea:focus {
   .sheet.is-dragging .sheet-panel,
   .sheet.is-expanded .sheet-panel {
     max-height: 100dvh;
+  }
+
+  /* 全屏状态直接锁成直角，不依赖 CSS 变量是否能传达到位；拖拽中仍由变量控制渐变 */
+  .dock-panel.is-expanded:not(.is-dragging),
+  .sheet.is-expanded:not(.is-dragging),
+  .sheet.is-expanded:not(.is-dragging) .sheet-panel:not(.is-dragging) {
+    border-radius: 0;
+  }
+
+  /* dialog 自身也跟随同一圆角，并取消裁剪：避免 iOS 用 UA 的 dialog 圆角/overflow 把内部卡片裁出另一套弧度 */
+  .sheet {
+    overflow: visible;
+    border-radius: var(--sheet-top-radius, var(--sheet-radius)) var(--sheet-top-radius, var(--sheet-radius)) 0 0;
   }
 
   /* 卡片顶部（把手 / 标题）接管手势，不参与面板内滚动 */

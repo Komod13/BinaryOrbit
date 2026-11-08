@@ -17,7 +17,7 @@ const SNAP_MS = 240;
 const MIN_HEIGHT = 120;
 const TAP_SLOP = 5;
 const FLICK_VELOCITY = 0.4;
-const BASE_RADIUS = 26;
+const FALLBACK_RADIUS = 32;
 
 function viewportHeight(): number {
   return Math.round(window.visualViewport?.height ?? window.innerHeight);
@@ -42,6 +42,7 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
   let wasExpanded = false;
   let onGrip = false;
   let peekBase = 0;
+  let radiusBase = FALLBACK_RADIUS;
   let collapseTimer: ReturnType<typeof setTimeout> | null = null;
 
   function hostElement(element: HTMLElement): HTMLElement {
@@ -78,13 +79,27 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
     window.removeEventListener('pointercancel', onPointerUp);
   }
 
-  /** 顶部圆角：半屏 26px，拖动过程中随高度线性收到 0，全屏时是直角 */
+  /** 从 CSS 读取统一的大圆角，保证 JS 渐变和样式表里的数值一致 */
+  function readRadiusBase(element: HTMLElement): number {
+    const value = Number.parseFloat(getComputedStyle(element).getPropertyValue('--sheet-radius'));
+    return Number.isFinite(value) && value > 0 ? value : FALLBACK_RADIUS;
+  }
+
+  /** 顶部圆角：半屏时用大圆角，拖动过程中随高度线性收到 0，全屏时是直角 */
   function setTopRadius(px: number): void {
-    panel.value?.style.setProperty('--sheet-top-radius', `${Math.max(0, Math.round(px))}px`);
+    const element = panel.value;
+    if (!element) return;
+    const value = `${Math.max(0, Math.round(px))}px`;
+    element.style.setProperty('--sheet-top-radius', value);
+    // dialog 自身也要同步，避免 iOS 用 UA 的 dialog 圆角裁剪内容
+    hostElement(element).style.setProperty('--sheet-top-radius', value);
   }
 
   function clearTopRadius(): void {
-    panel.value?.style.removeProperty('--sheet-top-radius');
+    const element = panel.value;
+    if (!element) return;
+    element.style.removeProperty('--sheet-top-radius');
+    hostElement(element).style.removeProperty('--sheet-top-radius');
   }
 
   /** 临时回到「内容自适应」量一次收起高度，不会触发可见的重排 */
@@ -132,6 +147,7 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
     startHeight = element.getBoundingClientRect().height;
     moveHeight = startHeight;
     peekBase = measurePeek();
+    radiusBase = readRadiusBase(element);
 
     // 拖拽期间先解除 max-height 限制，手感才是「卡片长高」而不是卡住不动
     setDragging(true);
@@ -156,10 +172,10 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
     moveHeight = next;
     element.style.height = `${Math.round(next)}px`;
 
-    // 圆角随高度从 26px 渐变到 0（全屏时顶部是直角）
+    // 圆角随高度从大圆角渐变到 0（全屏时顶部是直角）
     const span = Math.max(1, full - peekBase);
     const progress = Math.min(1, Math.max(0, (next - peekBase) / span));
-    setTopRadius(BASE_RADIUS * (1 - progress));
+    setTopRadius(radiusBase * (1 - progress));
 
     const dt = event.timeStamp - lastTime;
     if (dt > 0) velocity = (event.clientY - lastY) / dt;
@@ -206,7 +222,7 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
     }
 
     setExpanded(false);
-    setTopRadius(BASE_RADIUS);
+    setTopRadius(radiusBase);
     element.style.height = `${peek}px`;
     clearCollapseTimer();
     collapseTimer = setTimeout(() => {
