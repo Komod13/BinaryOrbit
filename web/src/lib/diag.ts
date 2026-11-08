@@ -22,6 +22,10 @@ export const diagState = {
   rebuildMs: 0,
   /** 当前生效的底图要素选项，如 `bg+point+road+building+labels` */
   mapOptions: '?',
+  /** 地图全部图层的 CLASS_NAME（排查注记图层用） */
+  mapLayers: '',
+  /** 命中的注记图层数 */
+  labelLayers: '',
   /** 地图 move / mapmove 等事件计数，由面板换算成「每秒重绘次数」 */
   mapFrames: 0,
 };
@@ -144,6 +148,8 @@ export function installDiag(): void {
     mapFramesMax: windowStats.mapFpsMax,
     renderer: diagState.renderer,
     mapOptions: diagState.mapOptions,
+    mapLayers: diagState.mapLayers,
+    labelLayers: diagState.labelLayers,
     markers: diagState.markers,
     places: diagState.places,
     zoom: diagState.zoom,

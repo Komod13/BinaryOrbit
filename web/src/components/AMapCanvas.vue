@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { forceDomRenderer, installMapTint, loadAMap, mapFeatureOptions, mapRenderOptions } from '../lib/amap.ts';
+import { installMapTint, loadAMap, mapFeatureOptions, mapRenderOptions } from '../lib/amap.ts';
 import { diagState } from '../lib/diag.ts';
 import { shortName } from '../lib/format.ts';
 import type { AppConfig, FilterKind, MapApi, MapViewport, Place } from '../lib/types.ts';
@@ -251,6 +251,27 @@ function emitView(): void {
 }
 
 /**
+ * 运行时关掉高德底图的注记图层（`?labels=off`）。
+ *
+ * 为什么不用构造参数：`showLabel` 只能在 `new AMap.Map` 时给，想「低 zoom 显示城市名、
+ * 高 zoom 关注记」就得能在运行时切。高德 2.0 会把注记放在独立的 Labels* 图层里，
+ * 这里把命中的图层 setVisible(false)，并把图层清单写进 diag 方便核对。
+ */
+function hideLabelLayers(): void {
+  const instance = map.value;
+  if (!instance?.getLayers) return;
+  const layers = instance.getLayers() ?? [];
+  const names = layers.map((layer: any) => String(layer?.CLASS_NAME ?? '?'));
+  diagState.mapLayers = names.join(',');
+  const targets = layers.filter((layer: any) => /Label/i.test(String(layer?.CLASS_NAME ?? '')));
+  diagState.labelLayers = String(targets.length);
+  for (const layer of targets) {
+    if (typeof layer.setVisible === 'function') layer.setVisible(false);
+    else layer.hide?.();
+  }
+}
+
+/**
  * 触屏设备上不再给瓦片层套 CSS 滤镜（每帧都要整屏重算，iPad 上平移缩放会明显掉帧），
  * 改成在瓦片层上方插一张静态色纱；桌面端仍由 CSS 媒体查询套滤镜。
  */
@@ -269,10 +290,9 @@ onMounted(async () => {
 
   const renderOptions = mapRenderOptions();
   const featureOptions = mapFeatureOptions(renderOptions);
-  const domForced = renderOptions.forceDom && forceDomRenderer(AMap);
   diagState.mapOptions =
     `${featureOptions.features.join('+')}${featureOptions.showLabel ? '+labels' : ''}` +
-    `${renderOptions.lowRes ? '+1x' : ''}${domForced ? '+dom' : ''}`;
+    `${renderOptions.lowRes ? '+1x' : ''}${renderOptions.hideLabels ? '+labels-off' : ''}`;
   const instance = new AMap.Map(host.value, {
     zoom: props.initialView.zoom,
     center: [props.initialView.lng, props.initialView.lat],
@@ -292,6 +312,7 @@ onMounted(async () => {
 
   instance.on('complete', () => {
     ensureTint();
+    if (renderOptions.hideLabels) hideLabelLayers();
     rebuildMarkers();
     syncLabels();
     syncCircle();
