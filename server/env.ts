@@ -1,12 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 
+/** 底图注记策略：auto = 低 zoom 显示城市名、高 zoom 隐藏；on / off = 强制 */
+export type MapLabels = 'auto' | 'on' | 'off';
+
 export interface Config {
   port: number;
   jsKey: string;
   securityCode: string;
   webKey: string;
   priceTiers: { low: number; high: number };
+  /** 底图文字注记策略（iPad 上高 zoom 的注记会把主线程占住，见 MAP_LABELS） */
+  mapLabels: MapLabels;
+  /** auto 模式下注记显示的 zoom 上限 */
+  mapLabelMaxZoom: number;
 }
 
 export const KEY_GUIDE = [
@@ -34,6 +41,14 @@ export function loadEnvFile(path = '.env'): void {
 
 let cached: Config | null = null;
 
+/** 接受 auto / on / off（大小写无关，兼容 1/0/true/false），写错就回落到 auto。 */
+export function parseMapLabels(raw: string | undefined): MapLabels {
+  const value = (raw ?? 'auto').trim().toLowerCase();
+  if (value === 'on' || value === '1' || value === 'true') return 'on';
+  if (value === 'off' || value === '0' || value === 'false') return 'off';
+  return 'auto';
+}
+
 export function getConfig(): Config {
   if (cached) return cached;
   const port = Number(process.env.PORT ?? 8787);
@@ -45,6 +60,8 @@ export function getConfig(): Config {
     securityCode: process.env.AMAP_SECURITY_CODE ?? '',
     webKey: process.env.AMAP_WEB_KEY ?? '',
     priceTiers: { low, high },
+    mapLabels: parseMapLabels(process.env.MAP_LABELS),
+    mapLabelMaxZoom: Number(process.env.MAP_LABEL_MAX_ZOOM ?? 12),
   };
   return cached;
 }
@@ -72,6 +89,13 @@ export function validateConfig(config: Config): string[] {
   }
   if (!(config.priceTiers.low >= 0) || !(config.priceTiers.high > config.priceTiers.low)) {
     problems.push('PRICE_TIER_LOW / PRICE_TIER_HIGH 需满足 0 ≤ LOW < HIGH');
+  }
+  const rawLabels = (process.env.MAP_LABELS ?? '').trim().toLowerCase();
+  if (rawLabels && !['auto', 'on', 'off', '1', '0', 'true', 'false'].includes(rawLabels)) {
+    problems.push(`MAP_LABELS 只能填 auto / on / off（当前是 "${process.env.MAP_LABELS}"）`);
+  }
+  if (!Number.isInteger(config.mapLabelMaxZoom) || config.mapLabelMaxZoom < 3 || config.mapLabelMaxZoom > 18) {
+    problems.push(`MAP_LABEL_MAX_ZOOM 需是 3–18 的整数（当前是 ${process.env.MAP_LABEL_MAX_ZOOM ?? ''}）`);
   }
   return problems;
 }

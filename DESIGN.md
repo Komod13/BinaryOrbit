@@ -50,7 +50,7 @@
 | 20 | 启动方式 | Windows 侧 `启动.bat` 一键启动（不打包 exe）；`开发.bat` 走 Vite HMR |
 | 21 | 代码位置 | 开发直接在仓库目录进行（ext4），**不再做 zip 中转** |
 | 22 | 交付 | `git push origin main` → Windows 端 `git pull` → 首次 `npm install` → 双击 `启动.bat` |
-| 23 | 底图观感 | **CSS 滤镜压色调**（`saturate/contrast/brightness` 变量化）逼近原型的安静米色；触屏设备改用静态色纱 `--map-tint`（避免滤镜逐帧重算）；自定义地图样式留二期 |
+| 23 | 底图观感 | **CSS 滤镜压色调**（`saturate/contrast/brightness` 变量化）逼近原型的安静米色；文字注记用 `MAP_LABELS` / `MAP_LABEL_MAX_ZOOM` 按 zoom 分级（iPad 上高 zoom 注记会占住主线程）；自定义地图样式留二期 |
 | 24 | 城市页实现 | **真实地理边界**：AMap zoom 4 + DataV 逐省地级市 GeoJSON，全国轮廓常驻且可点 |
 | 25 | 端适配 | **一套响应式**，断点 `860px`：≥860 右侧栏 + 常驻统计卡；<860 底部抽屉 + 统计徽标 |
 | 26 | 删除语义 | 删除某地点最后一条到访 = **连带删除该地点** |
@@ -110,6 +110,10 @@ PRICE_TIER_LOW=60
 PRICE_TIER_HIGH=150
 # 可选：手机访问用的局域网地址；自动挑选不对时手动指定
 LAN_IP=
+# 底图文字注记：auto（按 zoom 分级）/ on / off
+MAP_LABELS=auto
+# auto 模式下注记显示的 zoom 上限
+MAP_LABEL_MAX_ZOOM=12
 ```
 
 启动自检：缺任何一个 `AMAP_*` 项，就打印中文指引（说明哪个 key 去哪儿申请）并 `exit(1)`，不会带着不完整的配置起服务。
@@ -166,7 +170,7 @@ BinaryOrbit/
 **图层**：`AMap.Map`（zoom 12 起）、餐厅/景点两类 Marker、`AMap.MarkerCluster` 聚合、周边搜索圆。
 **底图**：`mapStyle` 不可用（样式服务未开通），统一用默认底图 + 容器 CSS 滤镜 `saturate(.35) contrast(.95) brightness(1.04)`（写成 CSS 变量，便于微调）。
 
-> 触屏设备（iPad / 手机）不套这个滤镜：满屏图层套 `filter` 等于每帧都要整屏重算，平移缩放会明显掉帧。`@media (any-pointer: coarse)` 下把滤镜关掉，只有在高德退到**栅格瓦片**时才补一层插在瓦片层上方的静态色纱（`.amap-tint`，颜色由 `--map-tint` 控制，由 `installMapTint()` 注入）；走 WebGL 画布时底图本来就套不上滤镜，保持原样。同理，`backdrop-filter` 只在鼠标设备保留（底部 Tab 的毛玻璃），触屏改成接近不透明的纯色背景。
+> 触屏（iPad / 手机）上高德走 WebGL 画布，滤镜本来就不匹配；卡顿的真因是矢量文字注记，见 §5.5。排查期间给触屏加的「静态色纱 + 关毛玻璃」已经回滚，样式与 `prototype/` 保持一致。
 
 **标记与聚合**：
 - 聚合 `gridSize 60`，气泡自定义为 `--accent` 实底 + 白字数量；点击聚合 → `zoomIn`（最多到 16）。
@@ -399,13 +403,16 @@ iPad / 手机上开不了 DevTools，所以把采样搬回电脑控制台：
 
 判别口径：`minFps` 低 + `frozenFrames` 多 + `loopLagMs` 大 → 主线程忙（高德渲染 JS / 我们的代码）；`loopLagMs` 小 → 主线程空闲，卡在 GPU / 合成器；`mapFramesPerSec` 低 + `slowResources` 有高德瓦片 → 等网络。
 
-对照开关（可叠加在 `?debug=1` 上，`query` / `mapOptions` 字段会记下）：
+注记策略由 `.env` 控制，URL 参数可临时覆盖（`?labels=on|off|auto`、`?labelzoom=N`）：
 
-- `labels=1` / `labels=0`：强制开 / 关注记；
-- `labels=auto`：按 zoom 切注记（低 zoom 显示、高 zoom 隐藏），`labelzoom=N` 调阈值，默认 12；
-- `nopoint=1` / `nobuilding=1` / `lean=1`：分别关掉 POI 图标 / 建筑 / 只剩底色+道路；
-- `dpr=1`：在 `loadAMap` 里把 `window.detectRetina = 0`（必须在高德脚本执行前设），让底图按 1x 而不是 dpr 倍渲染；
-- `mapLayers` / `labelLayers` 会随上报回传，用来核对 WebGL 下到底有哪些图层。
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `MAP_LABELS` | `auto` | `auto` 低于 `MAP_LABEL_MAX_ZOOM` 才显示；`on` 始终显示；`off` 始终隐藏 |
+| `MAP_LABEL_MAX_ZOOM` | `12` | `auto` 的上限 zoom（3–18） |
+
+桌面端走栅格瓦片（注记烘在图片里），这套开关只对 WebGL 渲染（iPad / 手机）生效。
+
+实现：构造时 `showLabel` 按 `mode !== 'off'` 给；`auto` 在 `complete` / `zoomend` 时找 `CLASS_NAME` 含 `Label` 的图层调 `setVisible()`（图层可能首帧后才挂上，带 200/600/1500/3000ms 退避重试），不重建地图。`mapLayers` / `labelLayers` / `labelsVisible` 随上报回传，便于核对。
 
 iPad 实测（Chrome iOS，dpr 2，0 条地点）：
 
@@ -420,13 +427,9 @@ iPad 实测（Chrome iOS，dpr 2，0 条地点）：
 
 定位结论：瓶颈是高德 2.0 WebGL 的**矢量文字注记**（主线程排版 + 建纹理），POI 图标 / 建筑 / 填充率 / 网络 / 标记层均已排除。
 
-落地选择：构造时保留注记（`showLabel:true`），再在建图后找 `CLASS_NAME` 含 `Label` 的图层调 `setVisible()`：
+落地选择：注记按 zoom 分级（默认 `auto` + `12`），由 `.env` 配置。注记在高德那边是「一整层」或按要素类型（`road` / `point`）整体开关，没有密度/白名单接口，所以做不到「只保留一部分文字」。
 
-- 触屏默认 `auto`：zoom < 12 显示（省/城市名，数量少不卡），≥ 12 隐藏（路名/POI 名爆炸）；
-- 桌面默认 `on`（桌面走栅格瓦片，注记烘在图片里，一直流畅）；
-- `?labels=1` / `?labels=0` 覆盖，`?labelzoom=N` 调阈值。
-
-注记在高德那边是「一整层」或按要素类型（`road` / `point`）整体开关，没有密度/白名单接口，所以做不到「只保留一部分文字」，只能按 zoom 分级。
+> 排查期间对前端组件/样式的改动（触屏色纱、触屏关毛玻璃、`rotateEnable/pitchEnable`、`showBuildingBlock`、`dpr`/`lean`/`nopoint`/`nobuilding`/`dom` 开关）已全部回滚，与 `prototype/` 对齐；只保留纯性能项：标记池化 + 手势期不重建、视野写盘与逆地理防抖缓存、`?debug=1` 自检面板。
 
 > 已否决的路线：`?dom=1` 把 `AMap.Browser.isWebGL` 置 false 强制 DomRender —— iPad 上白屏。`Support.baseRender` 在 JSAPI 初始化时就定为 `w`，后期改会让矢量图层与渲染器不一致。真要换渲染路线只能整页改用 JSAPI 1.4 / Leaflet 栅格瓦片，属于二期。
 

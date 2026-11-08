@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { installMapTint, loadAMap, mapFeatureOptions, mapRenderOptions } from '../lib/amap.ts';
-import type { LabelsMode } from '../lib/amap.ts';
+import { loadAMap, resolveLabels } from '../lib/amap.ts';
+import type { LabelSettings } from '../lib/amap.ts';
 import { diagState } from '../lib/diag.ts';
 import { shortName } from '../lib/format.ts';
 import type { AppConfig, FilterKind, MapApi, MapViewport, Place } from '../lib/types.ts';
@@ -258,8 +258,7 @@ function emitView(): void {
  * 高 zoom 关掉」（iPad 实测高 zoom 的路名/POI 名会把主线程占住 300ms+）。高德 2.0 把注记
  * 放在独立的 Labels* 图层里，`layer.setVisible()` 就能切，不需要重建地图。
  */
-let labelsMode: LabelsMode = 'on';
-let labelMaxZoom = 12;
+let labelSettings: LabelSettings = { mode: 'auto', maxZoom: 12 };
 let labelLayers: any[] = [];
 let labelsVisibleNow: boolean | null = null;
 
@@ -292,27 +291,22 @@ function applyLabelVisibility(visible: boolean): void {
 }
 
 /** auto：低 zoom 显示、高 zoom 隐藏；on：始终显示；off：始终隐藏。 */
+function labelsWanted(): boolean {
+  if (labelSettings.mode === 'on') return true;
+  if (labelSettings.mode === 'off') return false;
+  return (map.value?.getZoom() ?? 0) < labelSettings.maxZoom;
+}
+
 function syncLabelsByZoom(): void {
-  if (labelsMode === 'on') return;
-  const wanted = labelsMode === 'auto' && (map.value?.getZoom() ?? 0) < labelMaxZoom;
-  applyLabelVisibility(wanted);
+  applyLabelVisibility(labelsWanted());
   // 注记图层可能在首帧之后才挂上，没找到就退避重试几次
   if (!labelLayers.length) {
     for (const delay of [200, 600, 1500, 3000]) {
       setTimeout(() => {
-        if (labelLayers.length) return;
-        applyLabelVisibility(labelsMode === 'auto' && (map.value?.getZoom() ?? 0) < labelMaxZoom);
+        if (!labelLayers.length) applyLabelVisibility(labelsWanted());
       }, delay);
     }
   }
-}
-
-/**
- * 触屏设备上不再给瓦片层套 CSS 滤镜（每帧都要整屏重算，iPad 上平移缩放会明显掉帧），
- * 改成在瓦片层上方插一张静态色纱；桌面端仍由 CSS 媒体查询套滤镜。
- */
-function ensureTint(): void {
-  installMapTint(host.value);
 }
 
 onMounted(async () => {
@@ -324,32 +318,21 @@ onMounted(async () => {
   }
   if (!host.value) return;
 
-  const renderOptions = mapRenderOptions();
-  const featureOptions = mapFeatureOptions(renderOptions);
-  labelsMode = renderOptions.labels;
-  labelMaxZoom = renderOptions.labelMaxZoom;
-  diagState.mapOptions =
-    `${featureOptions.features.join('+')}${featureOptions.showLabel ? '+labels' : ''}` +
-    `${renderOptions.lowRes ? '+1x' : ''}+labels:${labelsMode}<${labelMaxZoom}`;
+  labelSettings = resolveLabels(props.config);
+  diagState.mapOptions = `labels:${labelSettings.mode}<${labelSettings.maxZoom}`;
   const instance = new AMap.Map(host.value, {
     zoom: props.initialView.zoom,
     center: [props.initialView.lng, props.initialView.lat],
     viewMode: '2D',
-    // 2D 地图不需要旋转 / 俯仰：iPad 上两指缩放时很容易带到旋转，画面一歪就显得很卡
-    rotateEnable: false,
-    pitchEnable: false,
     resizeEnable: true,
     zooms: [3, 18],
-    // 底图要素开关（?lean / ?labels=0 / ?nopoint / ?nobuilding）：用来在 iPad 上做卡顿二分
-    features: featureOptions.features,
-    showLabel: featureOptions.showLabel,
-    showBuildingBlock: !renderOptions.noBuilding && !renderOptions.lean,
+    // `off` 时直接不画注记；`auto` 先画出来，之后再按 zoom 用图层开关隐藏（见 syncLabelsByZoom）
+    showLabel: labelSettings.mode !== 'off',
   });
   map.value = instance;
   ready.value = true;
 
   instance.on('complete', () => {
-    ensureTint();
     syncLabelsByZoom();
     rebuildMarkers();
     syncLabels();
@@ -428,7 +411,6 @@ defineExpose<MapApi>({
   },
   resize() {
     map.value?.resize?.();
-    ensureTint();
   },
 });
 </script>

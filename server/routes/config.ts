@@ -9,5 +9,7 @@ configRoute.get('/', (c) => {
     jsKey: config.jsKey,
     serviceHost: '/_AMapService',
     priceTiers: config.priceTiers,
+    mapLabels: config.mapLabels,
+    mapLabelMaxZoom: config.mapLabelMaxZoom,
   });
 });

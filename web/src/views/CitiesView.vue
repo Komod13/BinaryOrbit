@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router';
 import Icon from '../components/Icon.vue';
 import SideSheet from '../components/SideSheet.vue';
 import { fetchCities, fetchCitiesGeo, fetchConfig, markCity, qk, unmarkCity } from '../lib/queries.ts';
-import { CHINA_VIEW, installMapTint, loadAMap } from '../lib/amap.ts';
+import { CHINA_VIEW, loadAMap } from '../lib/amap.ts';
 import { STORAGE_KEYS, readStorage, writeStorage } from '../lib/storage.ts';
 import { toast, toastError } from '../lib/toast.ts';
 import type { AppConfig, CityStat, MapViewport } from '../lib/types.ts';
@@ -288,7 +288,6 @@ onMounted(async () => {
   ready.value = true;
 
   instance.on('complete', () => {
-    installMapTint(host.value);
     renderFeatures();
   });
   instance.on('moveend', saveView);

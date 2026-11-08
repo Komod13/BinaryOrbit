@@ -146,18 +146,6 @@ select {
   }
 }
 
-/*
- * 触屏设备（iPad / iPhone）取消实时毛玻璃：
- * backdrop-filter 叠在会持续重绘的地图上，等于每帧都要重新取背景做模糊，平移缩放会明显掉帧。
- */
-@media (any-pointer: coarse) {
-  .tabbar {
-    background: rgba(255, 255, 255, 0.94);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-}
-
 .tab {
   display: flex;
   align-items: center;
@@ -207,6 +195,8 @@ select {
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-sm);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 .stats-toggle-num {
@@ -229,6 +219,8 @@ select {
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: var(--shadow-md);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 .stats[data-open="true"] .stats-card {

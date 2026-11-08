@@ -75,6 +75,10 @@ export interface AppConfig {
   jsKey: string;
   serviceHost: string;
   priceTiers: { low: number; high: number };
+  /** 底图注记策略：auto = 低 zoom 显示城市名、高 zoom 隐藏 */
+  mapLabels: 'auto' | 'on' | 'off';
+  /** auto 模式下注记显示的 zoom 上限 */
+  mapLabelMaxZoom: number;
 }
 
 export interface GeoFeature {

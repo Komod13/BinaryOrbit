@@ -4,36 +4,10 @@ declare global {
   interface Window {
     AMap?: any;
     _AMapSecurityConfig?: { serviceHost: string };
-    /** 高德内部用来判断高分屏的标记（见 loadAMap 里的注释） */
-    detectRetina?: number;
   }
 }
 
 let loading: Promise<any> | null = null;
-
-/**
- * 触屏设备（iPad / 手机）的底图压色调备用方案。
- *
- * 桌面端给栅格瓦片套 CSS 滤镜没问题，但在触屏上等于每次拖动都要整屏重算；
- * 所以触屏上不用滤镜（见 styles/components.css），改用瓦片层上方一张静态色纱。
- * 只在高德退到「栅格瓦片」（.amap-layer-tile）时才需要：WebGL 画布底下本来就套不上滤镜，
- * 也就不必额外压色调，保持原样最省事。
- */
-export function installMapTint(host: HTMLElement | null): void {
-  const layers = host?.querySelector('.amap-layers');
-  if (!layers) return;
-  const raster = Boolean(layers.querySelector('.amap-layer-tile'));
-  const existing = layers.querySelector<HTMLElement>('.amap-tint');
-  if (existing) {
-    existing.classList.toggle('amap-tint--raster', raster);
-    return;
-  }
-  if (!raster) return;
-  const tint = document.createElement('div');
-  tint.className = 'amap-tint amap-tint--raster';
-  tint.setAttribute('aria-hidden', 'true');
-  layers.appendChild(tint);
-}
 
 /**
  * serviceHost 统一补成绝对地址。
@@ -46,73 +20,36 @@ function absoluteServiceHost(config: AppConfig): string {
   return new URL(config.serviceHost, window.location.origin).href.replace(/\/+$/, '');
 }
 
-/** 地图渲染选项的实验开关（由 URL 参数控制，不写存量配置）。 */
-/** 底图文字注记策略。auto = 低 zoom 显示城市/省名、高 zoom 隐藏（iPad 上高 zoom 注记会把主线程占住） */
+/** 底图文字注记策略。auto = 低 zoom 显示城市/省名、高 zoom 隐藏。 */
 export type LabelsMode = 'auto' | 'on' | 'off';
 
-export interface MapRenderOptions {
-  /** 强制底图按 1x 渲染（iPad 上像素量降到 1/4，画面会略软） */
-  lowRes: boolean;
-  /** 只留底色与道路，不画 POI 与注记 */
-  lean: boolean;
-  /** 文字注记策略 */
-  labels: LabelsMode;
-  /** 不画 POI 点（图标） */
-  noPoint: boolean;
-  /** 不画建筑 */
-  noBuilding: boolean;
-  /** auto 模式下注记显示的 zoom 上限（低于它才显示），可用 `?labelzoom=` 调 */
-  labelMaxZoom: number;
-}
-
-export function mapRenderOptions(search = window.location.search): MapRenderOptions {
-  const params = new URLSearchParams(search);
-  const raw = params.get('labels');
-  // iPad 实测：高德 2.0 的矢量文字注记会把主线程占住 300ms+（关掉后同 zoom 从 3fps 回到 58fps）。
-  // 所以触屏默认 auto：低 zoom 保留城市名，高 zoom 自动关；`?labels=1` / `?labels=0` 可强制。
-  const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(any-pointer: coarse)').matches;
-  const labels: LabelsMode =
-    raw === '1' ? 'on' : raw === '0' || raw === 'off' ? 'off' : raw === 'auto' ? 'auto' : coarse ? 'auto' : 'on';
-  return {
-    lowRes: params.get('dpr') === '1',
-    lean: params.has('lean'),
-    labels,
-    noPoint: params.has('nopoint'),
-    noBuilding: params.has('nobuilding'),
-    labelMaxZoom: Number(params.get('labelzoom')) || 12,
-  };
-}
-
-const ALL_FEATURES = ['bg', 'point', 'road', 'building'];
-
-/** 把 URL 开关翻译成 AMap 的 `features` / `showLabel`。 */
-export function mapFeatureOptions(options: MapRenderOptions): {
-  features: string[];
-  showLabel: boolean;
-} {
-  if (options.lean) return { features: ['bg', 'road'], showLabel: false };
-  const features = ALL_FEATURES.filter((feature) => {
-    if (feature === 'point' && options.noPoint) return false;
-    if (feature === 'building' && options.noBuilding) return false;
-    return true;
-  });
-  return { features, showLabel: options.labels !== 'off' };
+export interface LabelSettings {
+  mode: LabelsMode;
+  /** auto 模式下注记显示的 zoom 上限（低于它才显示） */
+  maxZoom: number;
 }
 
 /**
- * 注入 JSAPI 2.0 脚本，并把安全密钥的验证交给后端代理。
- *
- * 注意：高德在脚本初始化时读一次 `window.detectRetina`，决定按 1x 还是 dpr 倍渲染。
- * iPad（dpr 2）上按 2x 渲染等于画 4 倍像素，WebGL 很容易画不动；`?dpr=1` 把它压回 1x。
- * 所以必须在脚本执行前设置，不能等 AMap 加载完再改。
+ * 注记策略：`.env` 的 `MAP_LABELS` / `MAP_LABEL_MAX_ZOOM` 打底，URL 参数可临时覆盖（调试用）：
+ * `?labels=1|0|auto`、`?labelzoom=13`。
  */
+export function resolveLabels(config: AppConfig, search = window.location.search): LabelSettings {
+  const params = new URLSearchParams(search);
+  const raw = params.get('labels');
+  const mode: LabelsMode =
+    raw === '1' ? 'on' : raw === '0' || raw === 'off' ? 'off' : raw === 'auto' ? 'auto' : config.mapLabels;
+  const zoomOverride = Number(params.get('labelzoom'));
+  const maxZoom = Number.isFinite(zoomOverride) && zoomOverride > 0 ? zoomOverride : config.mapLabelMaxZoom;
+  return { mode, maxZoom };
+}
+
+/** 注入 JSAPI 2.0 脚本，并把安全密钥的验证交给后端代理。 */
 export function loadAMap(config: AppConfig): Promise<any> {
   if (window.AMap) return Promise.resolve(window.AMap);
   if (loading) return loading;
 
   loading = new Promise((resolve, reject) => {
     window._AMapSecurityConfig = { serviceHost: absoluteServiceHost(config) };
-    if (mapRenderOptions().lowRes) window.detectRetina = 0;
     const script = document.createElement('script');
     script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(config.jsKey)}&plugin=AMap.GeoJSON`;
     script.async = true;
