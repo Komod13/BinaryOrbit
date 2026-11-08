@@ -26,6 +26,8 @@ export const diagState = {
   mapLayers: '',
   /** 命中的注记图层数 */
   labelLayers: '',
+  /** 注记当前是否可见（on/off/no-layer） */
+  labelsVisible: '',
   /** 地图 move / mapmove 等事件计数，由面板换算成「每秒重绘次数」 */
   mapFrames: 0,
 };
@@ -150,6 +152,7 @@ export function installDiag(): void {
     mapOptions: diagState.mapOptions,
     mapLayers: diagState.mapLayers,
     labelLayers: diagState.labelLayers,
+    labelsVisible: diagState.labelsVisible,
     markers: diagState.markers,
     places: diagState.places,
     zoom: diagState.zoom,

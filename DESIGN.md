@@ -338,7 +338,7 @@ npm scripts：
 | `npm run build` | 构建 `web/dist`（生产） |
 | `npm start` | 起生产服务（需要 `web/dist`） |
 | `npm test` | 后端 8 条集成测试（`node --test`，无需额外依赖） |
-| `npm run typecheck` | `tsc --noEmit`（前后端共享一个 tsconfig） |
+| `npm run typecheck` | `vue-tsc --noEmit`（同一个 tsconfig，顺带检查 `.vue` 里的 script） |
 
 > npm 11 默认不执行依赖的安装脚本，`esbuild` 缺 postinstall 会导致 `vite build` 失败。
 > `package.json` 里的 `allowScripts` 已显式放行 `esbuild` 与 `vue-demi`，`npm install` 会自动生效，无需手动干预。
@@ -401,8 +401,8 @@ iPad / 手机上开不了 DevTools，所以把采样搬回电脑控制台：
 
 对照开关（可叠加在 `?debug=1` 上，`query` / `mapOptions` 字段会记下）：
 
-- `labels=1` / `labels=0`：强制开 / 关注记（触屏默认已是关注记）；
-- `labels=off`：先正常建地图，再在 `complete` 里把 `CLASS_NAME` 包含 `Label` 的图层 `setVisible(false)`（验证能否按 zoom 动态切）；
+- `labels=1` / `labels=0`：强制开 / 关注记；
+- `labels=auto`：按 zoom 切注记（低 zoom 显示、高 zoom 隐藏），`labelzoom=N` 调阈值，默认 12；
 - `nopoint=1` / `nobuilding=1` / `lean=1`：分别关掉 POI 图标 / 建筑 / 只剩底色+道路；
 - `dpr=1`：在 `loadAMap` 里把 `window.detectRetina = 0`（必须在高德脚本执行前设），让底图按 1x 而不是 dpr 倍渲染；
 - `mapLayers` / `labelLayers` 会随上报回传，用来核对 WebGL 下到底有哪些图层。
@@ -420,7 +420,13 @@ iPad 实测（Chrome iOS，dpr 2，0 条地点）：
 
 定位结论：瓶颈是高德 2.0 WebGL 的**矢量文字注记**（主线程排版 + 建纹理），POI 图标 / 建筑 / 填充率 / 网络 / 标记层均已排除。
 
-落地选择：**触屏默认 `showLabel:false`**（保留 POI 图标、道路、建筑），实测同 zoom 从 3fps 回到 58fps；桌面端不变。
+落地选择：构造时保留注记（`showLabel:true`），再在建图后找 `CLASS_NAME` 含 `Label` 的图层调 `setVisible()`：
+
+- 触屏默认 `auto`：zoom < 12 显示（省/城市名，数量少不卡），≥ 12 隐藏（路名/POI 名爆炸）；
+- 桌面默认 `on`（桌面走栅格瓦片，注记烘在图片里，一直流畅）；
+- `?labels=1` / `?labels=0` 覆盖，`?labelzoom=N` 调阈值。
+
+注记在高德那边是「一整层」或按要素类型（`road` / `point`）整体开关，没有密度/白名单接口，所以做不到「只保留一部分文字」，只能按 zoom 分级。
 
 > 已否决的路线：`?dom=1` 把 `AMap.Browser.isWebGL` 置 false 强制 DomRender —— iPad 上白屏。`Support.baseRender` 在 JSAPI 初始化时就定为 `w`，后期改会让矢量图层与渲染器不一致。真要换渲染路线只能整页改用 JSAPI 1.4 / Leaflet 栅格瓦片，属于二期。
 

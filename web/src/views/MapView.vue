@@ -261,7 +261,9 @@ onMounted(async () => {
     /* 取不到列表就退回 IP 定位 */
   }
 
-  const guessed = await viewportFromIp(config.value);
+  const appConfig = config.value;
+  if (!appConfig) return;
+  const guessed = await viewportFromIp(appConfig);
   initialView.value = guessed ?? CHINA_VIEW;
 });
 

@@ -47,33 +47,39 @@ function absoluteServiceHost(config: AppConfig): string {
 }
 
 /** 地图渲染选项的实验开关（由 URL 参数控制，不写存量配置）。 */
+/** 底图文字注记策略。auto = 低 zoom 显示城市/省名、高 zoom 隐藏（iPad 上高 zoom 注记会把主线程占住） */
+export type LabelsMode = 'auto' | 'on' | 'off';
+
 export interface MapRenderOptions {
   /** 强制底图按 1x 渲染（iPad 上像素量降到 1/4，画面会略软） */
   lowRes: boolean;
   /** 只留底色与道路，不画 POI 与注记 */
   lean: boolean;
-  /** 不画底图文字注记（路名 / POI 名） */
-  noLabel: boolean;
+  /** 文字注记策略 */
+  labels: LabelsMode;
   /** 不画 POI 点（图标） */
   noPoint: boolean;
   /** 不画建筑 */
   noBuilding: boolean;
-  /** 运行时隐藏注记图层（构造后调 layer.setVisible(false)，不需要重建地图） */
-  hideLabels: boolean;
+  /** auto 模式下注记显示的 zoom 上限（低于它才显示），可用 `?labelzoom=` 调 */
+  labelMaxZoom: number;
 }
+
 export function mapRenderOptions(search = window.location.search): MapRenderOptions {
   const params = new URLSearchParams(search);
-  // iPad 实测：高德 2.0 的矢量文字注记会把主线程占住 300ms+（`?labels=0` 后同 zoom 可从 3fps 回到 58fps）。
-  // 所以触屏设备默认不画底图注记，用 `?labels=1` 可以要回来；桌面保持原样。
-  const labelsParam = params.get('labels');
+  const raw = params.get('labels');
+  // iPad 实测：高德 2.0 的矢量文字注记会把主线程占住 300ms+（关掉后同 zoom 从 3fps 回到 58fps）。
+  // 所以触屏默认 auto：低 zoom 保留城市名，高 zoom 自动关；`?labels=1` / `?labels=0` 可强制。
   const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(any-pointer: coarse)').matches;
+  const labels: LabelsMode =
+    raw === '1' ? 'on' : raw === '0' || raw === 'off' ? 'off' : raw === 'auto' ? 'auto' : coarse ? 'auto' : 'on';
   return {
     lowRes: params.get('dpr') === '1',
     lean: params.has('lean'),
-    noLabel: labelsParam === '0' || (labelsParam === null && coarse),
+    labels,
     noPoint: params.has('nopoint'),
     noBuilding: params.has('nobuilding'),
-    hideLabels: labelsParam === 'off',
+    labelMaxZoom: Number(params.get('labelzoom')) || 12,
   };
 }
 
@@ -90,7 +96,7 @@ export function mapFeatureOptions(options: MapRenderOptions): {
     if (feature === 'building' && options.noBuilding) return false;
     return true;
   });
-  return { features, showLabel: !options.noLabel };
+  return { features, showLabel: options.labels !== 'off' };
 }
 
 /**

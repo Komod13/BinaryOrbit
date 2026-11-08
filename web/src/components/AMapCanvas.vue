@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { installMapTint, loadAMap, mapFeatureOptions, mapRenderOptions } from '../lib/amap.ts';
+import type { LabelsMode } from '../lib/amap.ts';
 import { diagState } from '../lib/diag.ts';
 import { shortName } from '../lib/format.ts';
 import type { AppConfig, FilterKind, MapApi, MapViewport, Place } from '../lib/types.ts';
@@ -148,7 +149,7 @@ function rebuildMarkers(): void {
   let used = 0;
   for (const group of clusterPoints()) {
     const kind: 'pin' | 'cluster' = group.places.length === 1 ? 'pin' : 'cluster';
-    let slot = slots[used];
+    let slot: MarkerSlot | undefined = slots[used];
     if (slot && slot.kind !== kind) {
       instance.remove(slot.marker);
       slot = undefined;
@@ -251,23 +252,58 @@ function emitView(): void {
 }
 
 /**
- * 运行时关掉高德底图的注记图层（`?labels=off`）。
+ * 底图注记的运行时开关。
  *
- * 为什么不用构造参数：`showLabel` 只能在 `new AMap.Map` 时给，想「低 zoom 显示城市名、
- * 高 zoom 关注记」就得能在运行时切。高德 2.0 会把注记放在独立的 Labels* 图层里，
- * 这里把命中的图层 setVisible(false)，并把图层清单写进 diag 方便核对。
+ * 为什么不用构造参数：`showLabel` 只能在 `new AMap.Map` 时给，而我们需要「低 zoom 留城市名、
+ * 高 zoom 关掉」（iPad 实测高 zoom 的路名/POI 名会把主线程占住 300ms+）。高德 2.0 把注记
+ * 放在独立的 Labels* 图层里，`layer.setVisible()` 就能切，不需要重建地图。
  */
-function hideLabelLayers(): void {
+let labelsMode: LabelsMode = 'on';
+let labelMaxZoom = 12;
+let labelLayers: any[] = [];
+let labelsVisibleNow: boolean | null = null;
+
+function collectLabelLayers(): any[] {
   const instance = map.value;
-  if (!instance?.getLayers) return;
-  const layers = instance.getLayers() ?? [];
-  const names = layers.map((layer: any) => String(layer?.CLASS_NAME ?? '?'));
-  diagState.mapLayers = names.join(',');
-  const targets = layers.filter((layer: any) => /Label/i.test(String(layer?.CLASS_NAME ?? '')));
-  diagState.labelLayers = String(targets.length);
-  for (const layer of targets) {
-    if (typeof layer.setVisible === 'function') layer.setVisible(false);
+  if (!instance?.getLayers) return labelLayers;
+  if (!labelLayers.length) {
+    const layers = instance.getLayers() ?? [];
+    diagState.mapLayers = layers.map((layer: any) => String(layer?.CLASS_NAME ?? '?')).join(',');
+    labelLayers = layers.filter((layer: any) => /Label/i.test(String(layer?.CLASS_NAME ?? '')));
+    diagState.labelLayers = String(labelLayers.length);
+  }
+  return labelLayers;
+}
+
+function applyLabelVisibility(visible: boolean): void {
+  const layers = collectLabelLayers();
+  if (!layers.length) {
+    diagState.labelsVisible = 'no-layer';
+    return;
+  }
+  diagState.labelsVisible = visible ? 'on' : 'off';
+  if (labelsVisibleNow === visible) return;
+  labelsVisibleNow = visible;
+  for (const layer of layers) {
+    if (typeof layer.setVisible === 'function') layer.setVisible(visible);
+    else if (visible) layer.show?.();
     else layer.hide?.();
+  }
+}
+
+/** auto：低 zoom 显示、高 zoom 隐藏；on：始终显示；off：始终隐藏。 */
+function syncLabelsByZoom(): void {
+  if (labelsMode === 'on') return;
+  const wanted = labelsMode === 'auto' && (map.value?.getZoom() ?? 0) < labelMaxZoom;
+  applyLabelVisibility(wanted);
+  // 注记图层可能在首帧之后才挂上，没找到就退避重试几次
+  if (!labelLayers.length) {
+    for (const delay of [200, 600, 1500, 3000]) {
+      setTimeout(() => {
+        if (labelLayers.length) return;
+        applyLabelVisibility(labelsMode === 'auto' && (map.value?.getZoom() ?? 0) < labelMaxZoom);
+      }, delay);
+    }
   }
 }
 
@@ -290,9 +326,11 @@ onMounted(async () => {
 
   const renderOptions = mapRenderOptions();
   const featureOptions = mapFeatureOptions(renderOptions);
+  labelsMode = renderOptions.labels;
+  labelMaxZoom = renderOptions.labelMaxZoom;
   diagState.mapOptions =
     `${featureOptions.features.join('+')}${featureOptions.showLabel ? '+labels' : ''}` +
-    `${renderOptions.lowRes ? '+1x' : ''}${renderOptions.hideLabels ? '+labels-off' : ''}`;
+    `${renderOptions.lowRes ? '+1x' : ''}+labels:${labelsMode}<${labelMaxZoom}`;
   const instance = new AMap.Map(host.value, {
     zoom: props.initialView.zoom,
     center: [props.initialView.lng, props.initialView.lat],
@@ -312,7 +350,7 @@ onMounted(async () => {
 
   instance.on('complete', () => {
     ensureTint();
-    if (renderOptions.hideLabels) hideLabelLayers();
+    syncLabelsByZoom();
     rebuildMarkers();
     syncLabels();
     syncCircle();
@@ -345,6 +383,7 @@ onMounted(async () => {
   });
   instance.on('zoomend', () => {
     syncLabels();
+    syncLabelsByZoom();
     syncCircle();
     emitView();
     endInteraction();

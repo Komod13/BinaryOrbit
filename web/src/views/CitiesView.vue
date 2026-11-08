@@ -265,6 +265,7 @@ onMounted(async () => {
       queryFn: fetchConfig,
       staleTime: Infinity,
     });
+    if (!config.value) throw new Error('配置缺失');
     AMap = await loadAMap(config.value);
   } catch (loadError) {
     error.value = (loadError as Error).message;
