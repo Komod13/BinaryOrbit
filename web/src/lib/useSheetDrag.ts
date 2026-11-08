@@ -17,6 +17,7 @@ const SNAP_MS = 240;
 const MIN_HEIGHT = 120;
 const TAP_SLOP = 5;
 const FLICK_VELOCITY = 0.4;
+const BASE_RADIUS = 26;
 
 function viewportHeight(): number {
   return Math.round(window.visualViewport?.height ?? window.innerHeight);
@@ -40,6 +41,7 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
   let velocity = 0;
   let wasExpanded = false;
   let onGrip = false;
+  let peekBase = 0;
   let collapseTimer: ReturnType<typeof setTimeout> | null = null;
 
   function hostElement(element: HTMLElement): HTMLElement {
@@ -76,6 +78,32 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
     window.removeEventListener('pointercancel', onPointerUp);
   }
 
+  /** 顶部圆角：半屏 26px，拖动过程中随高度线性收到 0，全屏时是直角 */
+  function setTopRadius(px: number): void {
+    panel.value?.style.setProperty('--sheet-top-radius', `${Math.max(0, Math.round(px))}px`);
+  }
+
+  function clearTopRadius(): void {
+    panel.value?.style.removeProperty('--sheet-top-radius');
+  }
+
+  /** 临时回到「内容自适应」量一次收起高度，不会触发可见的重排 */
+  function measurePeek(): number {
+    const element = panel.value;
+    if (!element) return 0;
+    const expandedBefore = element.classList.contains('is-expanded');
+    const draggingBefore = element.classList.contains('is-dragging');
+    const previous = element.style.height;
+    if (expandedBefore) setExpanded(false);
+    if (draggingBefore) setDragging(false);
+    element.style.height = 'auto';
+    const height = Math.round(element.getBoundingClientRect().height);
+    element.style.height = previous;
+    if (expandedBefore) setExpanded(true);
+    if (draggingBefore) setDragging(true);
+    return height;
+  }
+
   function onPointerDown(event: PointerEvent): void {
     if (!isMobile() || active) return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
@@ -103,6 +131,7 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
     velocity = 0;
     startHeight = element.getBoundingClientRect().height;
     moveHeight = startHeight;
+    peekBase = measurePeek();
 
     // 拖拽期间先解除 max-height 限制，手感才是「卡片长高」而不是卡住不动
     setDragging(true);
@@ -126,6 +155,11 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
     const next = Math.max(MIN_HEIGHT, Math.min(full, startHeight + delta));
     moveHeight = next;
     element.style.height = `${Math.round(next)}px`;
+
+    // 圆角随高度从 26px 渐变到 0（全屏时顶部是直角）
+    const span = Math.max(1, full - peekBase);
+    const progress = Math.min(1, Math.max(0, (next - peekBase) / span));
+    setTopRadius(BASE_RADIUS * (1 - progress));
 
     const dt = event.timeStamp - lastTime;
     if (dt > 0) velocity = (event.clientY - lastY) / dt;
@@ -151,10 +185,7 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
     // 先回到默认状态量一次「自然收起高度」：此时 CSS 的 max-height 会生效
     setDragging(false);
     setExpanded(false);
-    const previous = element.style.height;
-    element.style.height = 'auto';
-    const peek = Math.round(element.getBoundingClientRect().height);
-    element.style.height = previous;
+    const peek = measurePeek();
 
     let expand: boolean;
     if (travelled <= TAP_SLOP) {
@@ -169,11 +200,13 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
 
     if (expand) {
       setExpanded(true);
+      setTopRadius(0);
       element.style.height = `${full}px`;
       return;
     }
 
     setExpanded(false);
+    setTopRadius(BASE_RADIUS);
     element.style.height = `${peek}px`;
     clearCollapseTimer();
     collapseTimer = setTimeout(() => {
@@ -206,6 +239,7 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
     pointerId = null;
     element.style.height = '';
     element.scrollTop = 0;
+    clearTopRadius();
     setDragging(false);
     setExpanded(false);
   }

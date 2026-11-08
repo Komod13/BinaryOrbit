@@ -179,7 +179,8 @@ select {
   /* 与原型一致：紧贴搜索框下方，右端与 chips 同一行 */
   top: calc(10px + var(--search-h) + var(--dock-gap) + env(safe-area-inset-top));
   right: 12px;
-  z-index: 25;
+  /* 高于顶部搜索/筛选浮层（z-index 30），否则地图页的「x 处足迹」会被它挡住点不到 */
+  z-index: 36;
   display: grid;
   justify-items: end;
   gap: 8px;
