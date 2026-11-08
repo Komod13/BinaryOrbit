@@ -12,7 +12,7 @@ visitsRoute.delete('/:id', (c) => {
 
   db.prepare('DELETE FROM visit WHERE id = ?').run(id);
 
-  // README §2.1 #26：删掉最后一条到访 = 连带删除该地点
+  // DESIGN.md §2.1 #26：删掉最后一条到访 = 连带删除该地点
   let placeDeleted = false;
   if (visitCount(row.place_id) === 0) {
     db.prepare('DELETE FROM place WHERE id = ?').run(row.place_id);

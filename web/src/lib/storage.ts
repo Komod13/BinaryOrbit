@@ -1,4 +1,4 @@
-/** localStorage 只存 README §2.1 #27 约定的 4 项，避免脏状态。 */
+/** localStorage 只存 DESIGN.md §2.1 #27 约定的 4 项，避免脏状态。 */
 export const STORAGE_KEYS = {
   statsCollapsed: 'bo.stats.collapsed',
   mapView: 'bo.map.view',

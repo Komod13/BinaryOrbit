@@ -102,7 +102,7 @@ async function submit(): Promise<void> {
     return;
   }
 
-  // 手动点：50m 内同名地点提示（README §3.2）
+  // 手动点：50m 内同名地点提示（DESIGN.md §3.2）
   if (isManual.value && !forceNew.value) {
     const candidate = props.places.find(
       (item) =>
