@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -17,11 +16,10 @@ import { citiesRoute } from './routes/cities.ts';
 import { statsRoute } from './routes/stats.ts';
 import { searchRoute } from './routes/search.ts';
 import { regeoRoute } from './routes/regeo.ts';
+import { diagRoute } from './routes/diag.ts';
 import { cityDictCount, syncCityDict } from './cities.ts';
 import { pickLanAddress } from './net.ts';
-
-const DIST_DIR = fileURLToPath(new URL('../web/dist', import.meta.url));
-const DIST_INDEX = join(DIST_DIR, 'index.html');
+import { DIST_DIR, DIST_INDEX, frontendBuild } from './build.ts';
 
 export function createApp() {
   const app = new Hono();
@@ -30,6 +28,22 @@ export function createApp() {
     const started = Date.now();
     await next();
     const ms = Date.now() - started;
+    const path = c.req.path;
+
+    // 带 hash 的 /assets 可以长缓存；HTML 必须每次回源，否则改完前端在手机上刷新还是旧页面
+    const cacheControl =
+      path.startsWith('/assets/')
+        ? 'public, max-age=31536000, immutable'
+        : path.startsWith('/api/') || path.startsWith('/_AMapService/')
+          ? 'no-store'
+          : 'no-cache';
+    try {
+      c.res.headers.set('cache-control', cacheControl);
+    } catch {
+      /* 响应头不可写就算了 */
+    }
+
+    if (ms > 800) console.log(`[slow] ${c.req.method} ${path} ${ms}ms`);
     console.log(`${c.req.method} ${c.req.path} ${c.res.status} ${ms}ms`);
   });
 
@@ -42,6 +56,7 @@ export function createApp() {
   app.route('/api/stats', statsRoute);
   app.route('/api/search', searchRoute);
   app.route('/api/regeo', regeoRoute);
+  app.route('/api/diag', diagRoute);
 
   app.all('/_AMapService/*', (c) => handleAmapService(c.req.raw, new URL(c.req.url)));
 
@@ -129,6 +144,17 @@ function printBanner(port: number): void {
   }
 
   console.log('  手机需与电脑连同一个 WiFi；首次连接请在 Windows 防火墙弹窗里选「专用网络」。');
+
+  const build = frontendBuild();
+  if (build) {
+    console.log(`  前端   ${build.asset} · ${build.stamp}`);
+    if (build.stale) {
+      console.log('  [warn] web/src 比 web/dist 新：先跑 npm run build，否则手机拿到的还是旧前端');
+    }
+  } else {
+    console.log('  前端   还没有构建（npm run build）');
+  }
+  console.log('  自检   手机上打开 <地址>?debug=1，左下角会显示帧率并可一键上报到这里');
   console.log('');
 }
 

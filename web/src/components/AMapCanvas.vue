@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { installMapTint, loadAMap } from '../lib/amap.ts';
+import { diagState } from '../lib/diag.ts';
 import { shortName } from '../lib/format.ts';
 import type { AppConfig, FilterKind, MapApi, MapViewport, Place } from '../lib/types.ts';
 import burgerIcon from '../assets/icons/burger.png';
@@ -143,6 +144,7 @@ function rebuildMarkers(): void {
   const instance = map.value;
   if (!instance || !AMap) return;
 
+  const started = performance.now();
   let used = 0;
   for (const group of clusterPoints()) {
     const kind: 'pin' | 'cluster' = group.places.length === 1 ? 'pin' : 'cluster';
@@ -172,6 +174,9 @@ function rebuildMarkers(): void {
   }
 
   for (let i = used; i < slots.length; i++) slots[i]?.marker.hide();
+
+  diagState.markers = used;
+  diagState.rebuildMs = performance.now() - started;
 }
 
 function scheduleRebuild(delay = 120): void {
@@ -263,6 +268,9 @@ onMounted(async () => {
     zoom: props.initialView.zoom,
     center: [props.initialView.lng, props.initialView.lat],
     viewMode: '2D',
+    // 2D 地图不需要旋转 / 俯仰：iPad 上两指缩放时很容易带到旋转，画面一歪就显得很卡
+    rotateEnable: false,
+    pitchEnable: false,
     resizeEnable: true,
     zooms: [3, 18],
   });
@@ -275,6 +283,25 @@ onMounted(async () => {
     syncLabels();
     syncCircle();
     emitView();
+    // 高德在移动 UA 下走 WebGL 画布，桌面 UA 下走栅格瓦片（见 diag 面板 / components.css）
+    diagState.renderer = host.value?.querySelector('canvas.amap-layer') ? 'webgl' : 'raster';
+  });
+  // 地图自己的重绘节奏：和 rAF 帧率对比，能区分「浏览器卡」还是「高德画得慢」
+  // 同一个动画帧里可能连发 move / mapmove 两个事件，用 rAF 去重，最多算一帧
+  let framePending = false;
+  const countMapFrame = (): void => {
+    if (framePending) return;
+    framePending = true;
+    requestAnimationFrame(() => {
+      framePending = false;
+    });
+    diagState.mapFrames++;
+  };
+  for (const event of ['move', 'mapmove', 'dragging']) {
+    instance.on(event, countMapFrame);
+  }
+  instance.on('zoomchange', () => {
+    diagState.mapFrames++;
   });
   instance.on('movestart', () => {
     interacting = true;

@@ -127,14 +127,16 @@ BinaryOrbit/
 ├─ 启动.bat              # Windows 生产启动（构建好的 dist + 后端）
 ├─ 开发.bat              # Windows 开发（Vite HMR + 后端并行）
 ├─ scripts/smoke.md      # agent-browser 冒烟步骤记录（不引入前端测试依赖）
+├─ scripts/ensure-build.mjs # 启动前判断 dist 是否比源码旧，旧了就自动构建
 ├─ server/
 │  ├─ index.ts           # Hono 装配、静态托管、启动横幅（IP + 二维码 + 开浏览器）
 │  ├─ net.ts             # 挑手机能用的局域网地址（跳过代理/虚拟机网卡）
+│  ├─ build.ts           # 读 web/dist 的构建时间 / bundle 名，源码比 dist 新就告警
 │  ├─ db.ts              # node:sqlite 连接 + 迁移执行
 │  ├─ schema.sql
 │  ├─ amap.ts            # 高德 Web 服务封装（含限流/错误映射/城市字典）
 │  ├─ geo.ts             # 地级市边界下载、归一化与缓存
-│  └─ routes/{places,visits,cities,stats,search,config,regeo}.ts
+│  └─ routes/{places,visits,cities,stats,search,config,regeo,diag}.ts
 ├─ web/
 │  ├─ index.html  vite.config.ts
 │  └─ src/
@@ -143,7 +145,7 @@ BinaryOrbit/
 │     ├─ components/AMapCanvas.vue  SearchPanel.vue  PlaceDetailPanel.vue
 │     │             PlaceFormPanel.vue  MapDock.vue  SideSheet.vue
 │     │             StatsFloat.vue  TabBar.vue
-│     ├─ lib/{amap.ts,api.ts,theme.ts,geo.ts}
+│     ├─ lib/{amap.ts,api.ts,theme.ts,geo.ts,diag.ts}
 │     └─ styles/
 └─ data/                 # gitignored：orbit.db + geo 缓存
 ```
@@ -349,6 +351,9 @@ npm scripts：
 |---|---|
 | JSAPI 在 `http://<IP>:<port>` 下加载 | ✅ 地图 `complete`，无 key 报错；`PlaceSearch` 走代理成功 |
 | `/_AMapService` 代理注入密钥 | ✅ 需 `jscode + platform=JS&s=rsv3`；只加 `jscode` → `10009` |
+| 静态资源缓存头 | ✅ `/assets/*` 长缓存 immutable，`index.html` / API `no-cache`，改完刷新不会卡在旧页面 |
+| 旧前端导致的「改了没效果」 | ✅ `启动.bat` 自动比较 mtime 重建，横幅打印 bundle 名 + 构建时间，`?debug=1` 面板上报同一时间戳 |
+| 移动端卡顿定位 | ✅ `?debug=1` 面板（帧率 / 最低帧 / 长任务 / 地图重绘节奏 / 标记重建耗时）一键 POST 到 `/api/diag`，在电脑控制台看 |
 | 局域网地址自动挑选 | ✅ 跳过 `198.18.0.1`（代理 TUN）、`169.254.x`；`192.168` 优先，支持 `LAN_IP` 覆盖 |
 | `node:sqlite` + Hono 起服务 | ✅ `node:sqlite` 免 flag 可用 |
 | DataV 地级市 GeoJSON | ✅ 33/34 省可下（3.68MB/475 要素），二次启动零请求；台湾 404 |
@@ -382,6 +387,17 @@ npm scripts：
 ### 5.4 前端冒烟
 
 用 `agent-browser` 做一次性冒烟：起服务、打开页面、录一条记录、核对统计、切到城市页、截图存档。步骤记录在 `scripts/smoke.md`，**不引入 Playwright/Puppeteer 依赖，也不进 CI**。
+
+### 5.5 移动端卡顿排查
+
+iPad / 手机上开不了 DevTools，所以把采样搬回电脑控制台：
+
+1. 浏览器打开 `<地址>?debug=1`，左下角出现自检面板（`?fps=1` 也兼容）；
+2. 拖动 / 缩放下地图，面板实时显示帧率、最低帧、长任务、地图重绘节奏、标记数量与重建耗时；
+3. 面板会自己上报（进页面 8s，之后每 20s），也可以点「上报到电脑控制台」；
+4. 服务端 `POST /api/diag` 把字段逐行打印到启动窗口（不落库、不存文件，最多 8KB）。
+
+面板里的 `build` 与启动横幅的「前端 bundle · 构建时间」对比，能直接确认手机上跑的是不是最新前端；不能对上就是 dist 旧 / 浏览器缓存，先重启 `启动.bat`（会自动重建）。
 
 ## 6. 待办需求
 

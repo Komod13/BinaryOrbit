@@ -13,11 +13,9 @@ if %NODE_MAJOR% LSS 24 goto old_node
 if not exist ".env" goto no_env
 if not exist "node_modules" goto no_modules
 
-if not exist "web\dist\index.html" (
-  echo 未找到 web\dist，正在构建前端...
-  call npm run build
-  if errorlevel 1 goto build_failed
-)
+echo 检查前端构建...
+node scripts\ensure-build.mjs
+if errorlevel 1 goto build_failed
 
 echo 正在启动 BinaryOrbit ...
 node server\index.ts

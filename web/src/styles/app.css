@@ -298,29 +298,45 @@ select {
   }
 }
 
-/* ---------- 可选：?fps=1 帧率角标（自查用） ---------- */
+/* ---------- 可选：?debug=1 自检面板（排查卡顿用） ---------- */
 
-.fps-meter {
+.diag-panel {
   position: fixed;
   left: 10px;
   bottom: calc(10px + env(safe-area-inset-bottom));
   z-index: 60;
-  padding: 4px 8px;
-  border-radius: 8px;
+  display: grid;
+  gap: 2px;
+  max-width: 260px;
+  padding: 7px 9px;
+  border-radius: 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
+  line-height: 1.45;
   font-variant-numeric: tabular-nums;
   color: #fff;
-  background: rgba(24, 28, 25, 0.72);
-  pointer-events: none;
+  background: rgba(24, 28, 25, 0.78);
 }
 
-.fps-meter[data-level="warn"] {
-  background: rgba(160, 96, 20, 0.8);
+.diag-title {
+  font-weight: 600;
 }
 
-.fps-meter[data-level="bad"] {
-  background: rgba(161, 40, 60, 0.85);
+.diag-report {
+  margin-top: 5px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font: inherit;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.diag-panel[data-level="warn"] {
+  background: rgba(120, 74, 12, 0.82);
+}
+
+.diag-panel[data-level="bad"] {
+  background: rgba(135, 32, 48, 0.85);
 }
 
 @media (prefers-reduced-motion: reduce) {
