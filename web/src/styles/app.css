@@ -273,6 +273,8 @@ select {
 
   .stats-card {
     display: flex;
+    /* 与左侧「搜索框 + 筛选行」等高（52 + 10 + 34 = 96），对齐原型 */
+    height: calc(var(--search-h) + var(--dock-gap) + var(--chip-h));
     padding: 0 4px;
     border-radius: 16px;
   }

@@ -34,9 +34,18 @@ const filter = ref<FilterKind>(readStorage<FilterKind>(STORAGE_KEYS.filter, 'all
 const drawer = ref<DrawerState>({ mode: 'none' });
 const radius = ref(1000);
 const center = ref<{ lng: number; lat: number } | null>(null);
-const cityScope = ref<'city' | 'nation'>('city');
-const centerCity = ref<string | null>(null);
+// 搜索范围：auto 时按「地图中心所在城市 + 当前缩放」判断，避免把上一个城市的名字带过来
+const scopeMode = ref<'auto' | 'city' | 'nation'>('auto');
+const city = ref<{ name: string; adcode: string | null } | null>(null);
+const zoom = ref(12);
 const resolvingCity = ref(false);
+
+const effectiveScope = computed<'city' | 'nation'>(() => {
+  if (scopeMode.value === 'nation') return 'nation';
+  if (scopeMode.value === 'city') return city.value?.name ? 'city' : 'nation';
+  // auto：只有真正看清一座城市（zoom ≥ 9）且已解析出城市时才限定到城市
+  return city.value?.name && zoom.value >= 9 ? 'city' : 'nation';
+});
 
 const placesQuery = useQuery({
   queryKey: computed(() => qk.places()),
@@ -62,32 +71,50 @@ watch(filter, (value) => writeStorage(STORAGE_KEYS.filter, value));
 watch(places, () => {
   if (drawer.value.mode !== 'none' || highlight.value.length) return;
   if (!placesLoaded.value) return;
-  if (!places.value.length && !centerCity.value) void probeCity(true);
+  if (!places.value.length && !city.value) void probeCity(true);
 });
 
 let moveTimer: ReturnType<typeof setTimeout> | null = null;
-let lastProbe = { lng: 0, lat: 0 };
+let lastProbe: { lng: number; lat: number } | null = null;
+
+/** 同一地点（约 2km）不重复请求；离上次探测很远（约 30km）先清掉旧城市，避免张冠李戴 */
+const SAME_PLACE_DEG = 0.02;
+const FAR_AWAY_DEG = 0.3;
+
 function onViewChange(view: MapViewport): void {
   center.value = { lng: view.lng, lat: view.lat };
+  zoom.value = view.zoom;
   writeStorage(STORAGE_KEYS.mapView, view);
   if (moveTimer) clearTimeout(moveTimer);
   moveTimer = setTimeout(() => {
-    if (cityScope.value !== 'city') return;
-    const moved = Math.abs(view.lng - lastProbe.lng) > 0.05 || Math.abs(view.lat - lastProbe.lat) > 0.05;
-    if (moved || !centerCity.value) void probeCity();
-  }, 700);
+    void probeCity();
+  }, 400);
 }
 
 async function probeCity(force = false): Promise<void> {
-  if (resolvingCity.value || !center.value) return;
-  if (!force && centerCity.value) return;
+  if (!center.value) return;
+  const lng = center.value.lng;
+  const lat = center.value.lat;
+  const moved = lastProbe
+    ? Math.abs(lng - lastProbe.lng) > SAME_PLACE_DEG || Math.abs(lat - lastProbe.lat) > SAME_PLACE_DEG
+    : true;
+  const farAway = lastProbe
+    ? Math.abs(lng - lastProbe.lng) > FAR_AWAY_DEG || Math.abs(lat - lastProbe.lat) > FAR_AWAY_DEG
+    : true;
+
+  if (!force && !moved && city.value) return;
+  if (resolvingCity.value) return;
+
+  // 视野已经离开上一座城市：先清掉旧值，界面上宁可显示「定位中…」
+  if (farAway) city.value = null;
+
   resolvingCity.value = true;
-  lastProbe = { ...center.value };
+  lastProbe = { lng, lat };
   try {
-    const regeo = await fetchRegeo(center.value.lng, center.value.lat);
-    centerCity.value = regeo.cityName;
+    const regeo = await fetchRegeo(lng, lat);
+    city.value = { name: regeo.cityName, adcode: regeo.cityAdcode };
   } catch {
-    /* 定位失败就保持「全国」 */
+    /* 定位失败：保持全国范围，下次移动再试 */
   } finally {
     resolvingCity.value = false;
   }
@@ -229,16 +256,20 @@ const showEmptyHint = computed(
     <MapDock
       :places="places"
       :filter="filter"
-      :city-name="centerCity"
-      :city-scope="cityScope"
+      :city-name="city?.name ?? null"
+      :city-adcode="city?.adcode ?? null"
+      :city-scope="effectiveScope"
       :resolving-city="resolvingCity"
       @update:filter="filter = $event"
-      @update:city-scope="cityScope = $event"
+      @update:scope-mode="scopeMode = $event"
       @open-place="openDetail"
       @open-poi="onSearchPick"
       @manual="onManualAdd"
-      @nearby="drawer = { mode: 'search' }"
-      @focus-search="probeCity()"
+      @nearby="
+        drawer = { mode: 'search' };
+        probeCity(true);
+      "
+      @focus-search="probeCity(true)"
     />
 
     <SideSheet :open="drawerOpen" :compact="drawer.mode === 'search'" @close="closeDrawer">

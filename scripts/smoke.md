@@ -106,7 +106,25 @@ agent-browser screenshot /tmp/smoke-8-m-search.png
 
 通过标准：地图缩到抽屉上方（约 44vh），准星与半径圈可见，统计徽标不压 chips 行。
 
-## 8. 切换与刷新
+## 8. 搜索范围跟随地图中心
+
+```bash
+# 全国视野（zoom 5）
+agent-browser eval 'localStorage.setItem("bo.map.view", JSON.stringify({lng:112.7,lat:31.0,zoom:5})); location.reload()'
+# 输入任意关键词后看建议面板底部
+agent-browser eval 'var i=document.querySelector(".search-field input"); i.focus(); i.value="餐厅"; i.dispatchEvent(new Event("input"))'
+agent-browser eval 'document.querySelector(".scope-toggle").textContent.replace(/\s+/g," ").trim()'
+# → 搜索范围：全国 切换
+
+# 杭州 zoom 13
+agent-browser eval 'localStorage.setItem("bo.map.view", JSON.stringify({lng:120.1551,lat:30.2741,zoom:13})); location.reload()'
+# → 搜索范围：杭州市 切换，且请求带 city=330100
+```
+
+通过标准：范围只跟随**当前地图中心**；缩放到 zoom < 9 时自动退化为「全国」；
+地图移动很远后不再显示上一个城市的名字（宁可短暂显示「定位中…」）。
+
+## 9. 切换与刷新
 
 ```bash
 agent-browser eval 'document.querySelectorAll(".tab")[1].click()'
@@ -129,4 +147,5 @@ agent-browser eval 'JSON.stringify({url: location.pathname, pins: document.query
 | 5 50m 同名合并 | ✅ 弹出二选一，合并后到访 1→2 |
 | 6 城市页 | ✅ 4 座城市点亮，369 个地级市要素，未点亮城市可点亮 |
 | 7 移动端 | ✅ 地图 371px / 准星 186 / 半径圈可见 / 统计徽标 110（chips 底 102） |
-| 8 切换与刷新 | ✅ KeepAlive 保留实例，刷新保持当前 Tab |
+| 8 搜索范围 | ✅ 全国视野显示「全国」、杭州 zoom13 显示「杭州市」且请求带 `city=330100` |
+| 9 切换与刷新 | ✅ KeepAlive 保留实例，刷新保持当前 Tab |

@@ -10,13 +10,14 @@ const props = defineProps<{
   places: Place[];
   filter: FilterKind;
   cityName: string | null;
+  cityAdcode: string | null;
   cityScope: 'city' | 'nation';
   resolvingCity?: boolean;
 }>();
 
 const emit = defineEmits<{
   'update:filter': [value: FilterKind];
-  'update:cityScope': [value: 'city' | 'nation'];
+  'update:scope-mode': [value: 'auto' | 'city' | 'nation'];
   openPlace: [id: number];
   openPoi: [poi: PoiResult];
   manual: [name: string];
@@ -40,7 +41,19 @@ watch(input, (value) => {
   }, 300);
 });
 
-const city = computed(() => (props.cityScope === 'city' ? props.cityName ?? undefined : undefined));
+// 高德的 city 参数接受 adcode 或城市名，优先用 adcode（更稳）
+const city = computed(() =>
+  props.cityScope === 'city' ? props.cityAdcode ?? props.cityName ?? undefined : undefined,
+);
+
+const scopeLabel = computed(() => {
+  if (props.cityScope === 'nation') return '全国';
+  return props.cityName ?? (props.resolvingCity ? '定位中…' : '全国');
+});
+
+function toggleScope(): void {
+  emit('update:scope-mode', props.cityScope === 'city' ? 'nation' : 'city');
+}
 
 const { data: remote, isFetching: remoteLoading } = useQuery({
   queryKey: computed(() => qk.searchText(keyword.value, 'all', city.value)),
@@ -203,14 +216,9 @@ const chips = computed(() => {
       </div>
 
       <div class="suggest-foot">
-        <button
-          class="scope-toggle"
-          type="button"
-          :disabled="resolvingCity"
-          @mousedown.prevent="emit('update:cityScope', cityScope === 'city' ? 'nation' : 'city')"
-        >
+        <button class="scope-toggle" type="button" @mousedown.prevent="toggleScope">
           <Icon name="pin" :size="14" />
-          {{ cityScope === 'city' ? (cityName ?? '定位中…') : '全国' }}
+          搜索范围：{{ scopeLabel }}
           <span class="scope-hint">切换</span>
         </button>
       </div>
