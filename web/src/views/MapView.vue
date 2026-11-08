@@ -75,6 +75,10 @@ const highlight = computed<string[]>(() => {
 });
 
 watch(filter, (value) => writeStorage(STORAGE_KEYS.filter, value));
+// 手动切到「本城市」时，若还没有城市名就补一次逆地理（缩得很小时自动探测会跳过）
+watch(scopeMode, (value) => {
+  if (value === 'city' && !city.value) void probeCity(true);
+});
 watch(places, () => {
   if (drawer.value.mode !== 'none' || highlight.value.length) return;
   if (!placesLoaded.value) return;
@@ -83,19 +87,44 @@ watch(places, () => {
 
 let moveTimer: ReturnType<typeof setTimeout> | null = null;
 let lastProbe: { lng: number; lat: number } | null = null;
+let probeAbort: AbortController | null = null;
+let probeSeq = 0;
+let storeTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingView: MapViewport | null = null;
+const regeoCache = new Map<string, { name: string; adcode: string | null }>();
 
 /** 同一地点（约 2km）不重复请求；离上次探测很远（约 30km）先清掉旧城市，避免张冠李戴 */
 const SAME_PLACE_DEG = 0.02;
 const FAR_AWAY_DEG = 0.3;
+/** 逆地理只需要城市，坐标粗到 ~1km 就能命中缓存 */
+const REGEO_CACHE_DEG = 0.01;
+
+/** localStorage 是同步写，拖动地图时不该每次 moveend 都写一遍 */
+function rememberView(view: MapViewport): void {
+  pendingView = view;
+  if (storeTimer) clearTimeout(storeTimer);
+  storeTimer = setTimeout(flushView, 600);
+}
+
+function flushView(): void {
+  if (storeTimer) {
+    clearTimeout(storeTimer);
+    storeTimer = null;
+  }
+  if (!pendingView) return;
+  writeStorage(STORAGE_KEYS.mapView, pendingView);
+  pendingView = null;
+}
 
 function onViewChange(view: MapViewport): void {
   center.value = { lng: view.lng, lat: view.lat };
   zoom.value = view.zoom;
-  writeStorage(STORAGE_KEYS.mapView, view);
+  rememberView(view);
   if (moveTimer) clearTimeout(moveTimer);
   moveTimer = setTimeout(() => {
+    moveTimer = null;
     void probeCity();
-  }, 400);
+  }, 600);
 }
 
 async function probeCity(force = false): Promise<void> {
@@ -110,20 +139,44 @@ async function probeCity(force = false): Promise<void> {
     : true;
 
   if (!force && !moved && city.value) return;
-  if (resolvingCity.value) return;
+  // 全国视野下用不到城市名（effectiveScope 已是 nation）：拖动时不再每次都打一次高德
+  if (!force && scopeMode.value === 'auto' && zoom.value < 9) return;
+
+  const seq = ++probeSeq;
+  const key = `${Math.round(lng / REGEO_CACHE_DEG)}:${Math.round(lat / REGEO_CACHE_DEG)}`;
+  const cached = regeoCache.get(key);
+  if (cached) {
+    lastProbe = { lng, lat };
+    city.value = cached;
+    return;
+  }
 
   // 视野已经离开上一座城市：先清掉旧值，界面上宁可显示「定位中…」
   if (farAway) city.value = null;
 
+  // 上一次还没回来就取消：压住拖动地图时刷屏式的 /api/regeo
+  probeAbort?.abort();
+  const controller = new AbortController();
+  probeAbort = controller;
   resolvingCity.value = true;
   lastProbe = { lng, lat };
   try {
-    const regeo = await fetchRegeo(lng, lat);
-    city.value = { name: regeo.cityName, adcode: regeo.cityAdcode };
+    const regeo = await fetchRegeo(lng, lat, controller.signal);
+    if (seq !== probeSeq) return;
+    const value = { name: regeo.cityName, adcode: regeo.cityAdcode };
+    regeoCache.set(key, value);
+    if (regeoCache.size > 200) {
+      const oldest = regeoCache.keys().next();
+      if (!oldest.done) regeoCache.delete(oldest.value);
+    }
+    city.value = value;
   } catch {
-    /* 定位失败：保持全国范围，下次移动再试 */
+    /* 定位失败或被取消：保持全国范围，下次移动再试 */
   } finally {
-    resolvingCity.value = false;
+    if (probeAbort === controller) {
+      probeAbort = null;
+      resolvingCity.value = false;
+    }
   }
 }
 
@@ -237,6 +290,8 @@ onMounted(() => window.addEventListener('keydown', onKeydown));
 
 onBeforeUnmount(() => {
   if (moveTimer) clearTimeout(moveTimer);
+  probeAbort?.abort();
+  flushView();
   window.removeEventListener('keydown', onKeydown);
 });
 

@@ -36,6 +36,8 @@
 
   /* 高德默认底图压色调，逼近原型的安静米色；0 = 原生，1 = 最灰 */
   --map-filter: saturate(0.35) contrast(0.95) brightness(1.04);
+  /* 触屏设备代替上面滤镜的静态色纱（filter 在移动端每帧重算，代价太高） */
+  --map-tint: rgba(236, 237, 230, 0.3);
 
   --shadow-sm: 0 2px 8px rgba(24, 28, 25, 0.08);
   --shadow-md: 0 8px 28px rgba(24, 28, 25, 0.12);

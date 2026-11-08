@@ -18,15 +18,23 @@ function buildUrl(path: string, params?: Record<string, string | number | undefi
   return query ? `${path}?${query}` : path;
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  options?: { signal?: AbortSignal },
+): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
       method,
       headers: body === undefined ? undefined : { 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: options?.signal,
     });
-  } catch {
+  } catch (error) {
+    // 主动取消（比如地图连续移动时丢掉上一次逆地理）不算错误，原样抛出
+    if ((error as Error)?.name === 'AbortError') throw error;
     throw new ApiError('连不上服务，请确认后端是否还在运行', 0);
   }
 
@@ -49,8 +57,12 @@ function safeJson(text: string): unknown {
   }
 }
 
-export function apiGet<T>(path: string, params?: Record<string, string | number | undefined | null>): Promise<T> {
-  return request<T>('GET', buildUrl(path, params));
+export function apiGet<T>(
+  path: string,
+  params?: Record<string, string | number | undefined | null>,
+  options?: { signal?: AbortSignal },
+): Promise<T> {
+  return request<T>('GET', buildUrl(path, params), undefined, options);
 }
 
 export function apiPost<T>(path: string, body?: unknown): Promise<T> {

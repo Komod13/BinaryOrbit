@@ -146,6 +146,18 @@ select {
   }
 }
 
+/*
+ * 触屏设备（iPad / iPhone）取消实时毛玻璃：
+ * backdrop-filter 叠在会持续重绘的地图上，等于每帧都要重新取背景做模糊，平移缩放会明显掉帧。
+ */
+@media (any-pointer: coarse) {
+  .tabbar {
+    background: rgba(255, 255, 255, 0.94);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 .tab {
   display: flex;
   align-items: center;
@@ -195,8 +207,6 @@ select {
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-sm);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
 }
 
 .stats-toggle-num {
@@ -219,8 +229,6 @@ select {
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: var(--shadow-md);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
 }
 
 .stats[data-open="true"] .stats-card {
@@ -288,6 +296,31 @@ select {
   .stats-card .stat-num {
     font-size: 26px;
   }
+}
+
+/* ---------- 可选：?fps=1 帧率角标（自查用） ---------- */
+
+.fps-meter {
+  position: fixed;
+  left: 10px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  z-index: 60;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: rgba(24, 28, 25, 0.72);
+  pointer-events: none;
+}
+
+.fps-meter[data-level="warn"] {
+  background: rgba(160, 96, 20, 0.8);
+}
+
+.fps-meter[data-level="bad"] {
+  background: rgba(161, 40, 60, 0.85);
 }
 
 @media (prefers-reduced-motion: reduce) {

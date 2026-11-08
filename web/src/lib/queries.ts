@@ -63,10 +63,11 @@ export const markCity = (adcode: string, name?: string) =>
 export const unmarkCity = (adcode: string) =>
   apiDelete<{ ok: true; removed: boolean }>(`/api/cities/manual?adcode=${encodeURIComponent(adcode)}`);
 
-export const fetchRegeo = (lng: number, lat: number) =>
+export const fetchRegeo = (lng: number, lat: number, signal?: AbortSignal) =>
   apiGet<{ cityName: string; cityAdcode: string | null; district: string | null; address: string }>(
     '/api/regeo',
     { lng, lat },
+    { signal },
   );
 
 export type { PoiResult };

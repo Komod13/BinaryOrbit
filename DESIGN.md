@@ -50,7 +50,7 @@
 | 20 | 启动方式 | Windows 侧 `启动.bat` 一键启动（不打包 exe）；`开发.bat` 走 Vite HMR |
 | 21 | 代码位置 | 开发直接在仓库目录进行（ext4），**不再做 zip 中转** |
 | 22 | 交付 | `git push origin main` → Windows 端 `git pull` → 首次 `npm install` → 双击 `启动.bat` |
-| 23 | 底图观感 | **CSS 滤镜压色调**（`saturate/contrast/brightness` 变量化）逼近原型的安静米色；自定义地图样式留二期 |
+| 23 | 底图观感 | **CSS 滤镜压色调**（`saturate/contrast/brightness` 变量化）逼近原型的安静米色；触屏设备改用静态色纱 `--map-tint`（避免滤镜逐帧重算）；自定义地图样式留二期 |
 | 24 | 城市页实现 | **真实地理边界**：AMap zoom 4 + DataV 逐省地级市 GeoJSON，全国轮廓常驻且可点 |
 | 25 | 端适配 | **一套响应式**，断点 `860px`：≥860 右侧栏 + 常驻统计卡；<860 底部抽屉 + 统计徽标 |
 | 26 | 删除语义 | 删除某地点最后一条到访 = **连带删除该地点** |
@@ -158,6 +158,8 @@ BinaryOrbit/
 
 **图层**：`AMap.Map`（zoom 12 起）、餐厅/景点两类 Marker、`AMap.MarkerCluster` 聚合、周边搜索圆。
 **底图**：`mapStyle` 不可用（样式服务未开通），统一用默认底图 + 容器 CSS 滤镜 `saturate(.35) contrast(.95) brightness(1.04)`（写成 CSS 变量，便于微调）。
+
+> 触屏设备（iPad / 手机）不套这个滤镜：满屏图层套 `filter` 等于每帧都要整屏重算，平移缩放会明显掉帧。`@media (any-pointer: coarse)` 下把滤镜关掉，只有在高德退到**栅格瓦片**时才补一层插在瓦片层上方的静态色纱（`.amap-tint`，颜色由 `--map-tint` 控制，由 `installMapTint()` 注入）；走 WebGL 画布时底图本来就套不上滤镜，保持原样。同理，`backdrop-filter` 只在鼠标设备保留（底部 Tab 的毛玻璃），触屏改成接近不透明的纯色背景。
 
 **标记与聚合**：
 - 聚合 `gridSize 60`，气泡自定义为 `--accent` 实底 + 白字数量；点击聚合 → `zoomIn`（最多到 16）。

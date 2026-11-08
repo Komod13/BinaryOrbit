@@ -10,6 +10,30 @@ declare global {
 let loading: Promise<any> | null = null;
 
 /**
+ * 触屏设备（iPad / 手机）的底图压色调备用方案。
+ *
+ * 桌面端给栅格瓦片套 CSS 滤镜没问题，但在触屏上等于每次拖动都要整屏重算；
+ * 所以触屏上不用滤镜（见 styles/components.css），改用瓦片层上方一张静态色纱。
+ * 只在高德退到「栅格瓦片」（.amap-layer-tile）时才需要：WebGL 画布底下本来就套不上滤镜，
+ * 也就不必额外压色调，保持原样最省事。
+ */
+export function installMapTint(host: HTMLElement | null): void {
+  const layers = host?.querySelector('.amap-layers');
+  if (!layers) return;
+  const raster = Boolean(layers.querySelector('.amap-layer-tile'));
+  const existing = layers.querySelector<HTMLElement>('.amap-tint');
+  if (existing) {
+    existing.classList.toggle('amap-tint--raster', raster);
+    return;
+  }
+  if (!raster) return;
+  const tint = document.createElement('div');
+  tint.className = 'amap-tint amap-tint--raster';
+  tint.setAttribute('aria-hidden', 'true');
+  layers.appendChild(tint);
+}
+
+/**
  * serviceHost 统一补成绝对地址。
  * 高德 SDK 内部用 `serviceHost.replace(/https?:\/\/\S+?\//, '').split('/')[0]` 取首段，
  * 再和 "_AMapService" 比对；裸路径 '/_AMapService' 取到的是空串，于是会打印

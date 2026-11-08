@@ -16,9 +16,33 @@
   background: var(--map-land);
 }
 
-/* 只给瓦片图层上滤镜：标记、标签、城市多边形都是独立图层，不受影响 */
+/*
+ * 只给瓦片图层上滤镜：标记、标签、城市多边形都是独立图层，不受影响。
+ * 但满屏图层套 CSS 滤镜意味着每一帧都要整屏重算（WKWebView 上尤其明显），
+ * 所以有触屏（iPad / 手机 / 触屏笔电）就直接关掉。
+ */
 .amap-layer-tile {
   filter: var(--map-filter);
+}
+
+/* 触屏上代替滤镜的静态色纱：零逐帧成本，观感接近降饱和 + 提亮 */
+.amap-tint {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: none;
+  pointer-events: none;
+  background: var(--map-tint);
+}
+
+@media (any-pointer: coarse) {
+  .amap-layer-tile {
+    filter: none;
+  }
+
+  .amap-tint--raster {
+    display: block;
+  }
 }
 
 .labels-on .pin-label {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { loadAMap } from '../lib/amap.ts';
+import { installMapTint, loadAMap } from '../lib/amap.ts';
 import { shortName } from '../lib/format.ts';
 import type { AppConfig, FilterKind, MapApi, MapViewport, Place } from '../lib/types.ts';
 import burgerIcon from '../assets/icons/burger.png';
@@ -31,9 +31,19 @@ const zoom = ref(props.initialView.zoom);
 
 const map = shallowRef<any>(null);
 let AMap: any = null;
-let markers: any[] = [];
 let circle: any = null;
 let clusterTimer: ReturnType<typeof setTimeout> | null = null;
+// 手势进行中不做聚合重建：iOS/WKWebView 上删除+重建几十个 DOM 标记会直接卡住一帧以上
+let interacting = false;
+let pendingRebuild = false;
+
+interface MarkerSlot {
+  marker: any;
+  kind: 'pin' | 'cluster';
+  el: HTMLDivElement;
+}
+
+let slots: MarkerSlot[] = [];
 
 const GRID = 60;
 const MAX_CLUSTER_ZOOM = 16;
@@ -45,8 +55,8 @@ const visiblePlaces = computed(() =>
 const highlight = computed(() => new Set(props.highlightAdcodes));
 
 function clearMarkers(): void {
-  if (map.value && markers.length) map.value.remove(markers);
-  markers = [];
+  if (map.value && slots.length) map.value.remove(slots.map((slot) => slot.marker));
+  slots = [];
 }
 
 function clusterPoints(): { x: number; y: number; places: Place[] }[] {
@@ -64,77 +74,128 @@ function clusterPoints(): { x: number; y: number; places: Place[] }[] {
   return [...cells.values()];
 }
 
-function makePin(place: Place): HTMLDivElement {
+/** 标记 DOM 只建一次，之后只改内容/位置（避免每次重建都重新解码图标、重排 DOM）。 */
+function createPinElement(): HTMLDivElement {
   const element = document.createElement('div');
-  element.className = `pin-marker pin-marker--${place.type}`;
-  if (highlight.value.size) {
-    element.classList.add(highlight.value.has(place.cityAdcode ?? '') ? 'is-highlight' : 'is-dim');
-  }
-  const icon = place.type === 'restaurant' ? burgerIcon : cameraIcon;
+  element.className = 'pin-marker';
   element.innerHTML =
-    `<span class="pin-dot"><span class="pin-plate"><img class="pin-img" src="${icon}" alt="" /></span></span>` +
-    `<span class="pin-label">${escapeHtml(shortName(place.name))}</span>`;
-  element.title = place.name;
+    '<span class="pin-dot"><span class="pin-plate"><img class="pin-img" alt="" /></span></span>' +
+    '<span class="pin-label"></span>';
   element.addEventListener('click', (event) => {
     event.stopPropagation();
-    emit('markerClick', place.id);
+    const id = Number(element.dataset.placeId);
+    if (Number.isFinite(id)) emit('markerClick', id);
   });
   return element;
 }
 
-function makeCluster(group: { x: number; y: number; places: Place[] }): HTMLDivElement {
+function fillPin(element: HTMLDivElement, place: Place): void {
+  element.dataset.placeId = String(place.id);
+  element.className = `pin-marker pin-marker--${place.type}`;
+  if (highlight.value.size) {
+    element.classList.add(highlight.value.has(place.cityAdcode ?? '') ? 'is-highlight' : 'is-dim');
+  }
+  const image = element.querySelector<HTMLImageElement>('.pin-img');
+  const icon = place.type === 'restaurant' ? burgerIcon : cameraIcon;
+  if (image && image.getAttribute('src') !== icon) image.src = icon;
+  const label = element.querySelector('.pin-label');
+  const text = shortName(place.name);
+  if (label && label.textContent !== text) label.textContent = text;
+  element.title = place.name;
+}
+
+function createClusterElement(): HTMLDivElement {
   const element = document.createElement('div');
   element.className = 'pin-cluster';
-  element.innerHTML = `<span>${group.places.length}</span>`;
-  element.title = `${group.places.length} 个地点`;
+  element.innerHTML = '<span></span>';
   element.addEventListener('click', (event) => {
     event.stopPropagation();
+    const places = (element as unknown as { __places?: Place[] }).__places;
+    if (!places?.length) return;
     const current = map.value?.getZoom() ?? zoom.value;
     const next = Math.min(MAX_CLUSTER_ZOOM, Math.max(current + 2, 14));
-    const lng = group.places.reduce((total, place) => total + place.lng, 0) / group.places.length;
-    const lat = group.places.reduce((total, place) => total + place.lat, 0) / group.places.length;
+    const lng = places.reduce((total, place) => total + place.lng, 0) / places.length;
+    const lat = places.reduce((total, place) => total + place.lat, 0) / places.length;
     map.value?.setZoomAndCenter(next, [lng, lat]);
   });
   return element;
 }
 
+function fillCluster(element: HTMLDivElement, places: Place[]): void {
+  (element as unknown as { __places?: Place[] }).__places = places;
+  const count = element.querySelector('span');
+  const text = String(places.length);
+  if (count && count.textContent !== text) count.textContent = text;
+  element.title = `${places.length} 个地点`;
+}
+
+function createSlot(kind: 'pin' | 'cluster'): MarkerSlot {
+  const el = kind === 'pin' ? createPinElement() : createClusterElement();
+  const marker = new AMap.Marker({
+    content: el,
+    anchor: kind === 'pin' ? 'bottom-center' : 'center',
+    zIndex: kind === 'pin' ? 120 : 130,
+  });
+  return { marker, kind, el };
+}
+
 function rebuildMarkers(): void {
   const instance = map.value;
   if (!instance || !AMap) return;
-  clearMarkers();
 
+  let used = 0;
   for (const group of clusterPoints()) {
-    if (group.places.length === 1) {
+    const kind: 'pin' | 'cluster' = group.places.length === 1 ? 'pin' : 'cluster';
+    let slot = slots[used];
+    if (slot && slot.kind !== kind) {
+      instance.remove(slot.marker);
+      slot = undefined;
+    }
+    if (!slot) {
+      slot = createSlot(kind);
+      slots[used] = slot;
+      instance.add(slot.marker);
+    }
+
+    if (kind === 'pin') {
       const place = group.places[0] as Place;
-      const marker = new AMap.Marker({
-        position: [place.lng, place.lat],
-        content: makePin(place),
-        anchor: 'bottom-center',
-        offset: new AMap.Pixel(0, 0),
-        zIndex: 120,
-      });
-      markers.push(marker);
+      fillPin(slot.el, place);
+      slot.marker.setPosition([place.lng, place.lat]);
     } else {
+      fillCluster(slot.el, group.places);
       const lng = group.places.reduce((total, place) => total + place.lng, 0) / group.places.length;
       const lat = group.places.reduce((total, place) => total + place.lat, 0) / group.places.length;
-      const marker = new AMap.Marker({
-        position: [lng, lat],
-        content: makeCluster(group),
-        anchor: 'center',
-        zIndex: 130,
-      });
-      markers.push(marker);
+      slot.marker.setPosition([lng, lat]);
     }
+    slot.marker.show();
+    used++;
   }
-  instance.add(markers);
+
+  for (let i = used; i < slots.length; i++) slots[i]?.marker.hide();
 }
 
-function scheduleRebuild(): void {
+function scheduleRebuild(delay = 120): void {
+  if (interacting) {
+    pendingRebuild = true;
+    return;
+  }
   if (clusterTimer) clearTimeout(clusterTimer);
   clusterTimer = setTimeout(() => {
     clusterTimer = null;
+    if (interacting) {
+      pendingRebuild = true;
+      return;
+    }
     rebuildMarkers();
-  }, 60);
+  }, delay);
+}
+
+function endInteraction(): void {
+  interacting = false;
+  if (pendingRebuild) {
+    pendingRebuild = false;
+    scheduleRebuild(0);
+  }
 }
 
 function syncLabels(): void {
@@ -181,6 +242,14 @@ function emitView(): void {
   emit('viewChange', { lng: center.getLng(), lat: center.getLat(), zoom: instance.getZoom() });
 }
 
+/**
+ * 触屏设备上不再给瓦片层套 CSS 滤镜（每帧都要整屏重算，iPad 上平移缩放会明显掉帧），
+ * 改成在瓦片层上方插一张静态色纱；桌面端仍由 CSS 媒体查询套滤镜。
+ */
+function ensureTint(): void {
+  installMapTint(host.value);
+}
+
 onMounted(async () => {
   try {
     AMap = await loadAMap(props.config);
@@ -201,21 +270,30 @@ onMounted(async () => {
   ready.value = true;
 
   instance.on('complete', () => {
+    ensureTint();
     rebuildMarkers();
     syncLabels();
     syncCircle();
     emitView();
   });
+  instance.on('movestart', () => {
+    interacting = true;
+  });
+  instance.on('zoomstart', () => {
+    interacting = true;
+  });
   instance.on('zoomend', () => {
     syncLabels();
-    scheduleRebuild();
     syncCircle();
     emitView();
+    endInteraction();
+    scheduleRebuild();
   });
   instance.on('moveend', () => {
-    scheduleRebuild();
     syncCircle();
     emitView();
+    endInteraction();
+    scheduleRebuild();
   });
 });
 
@@ -250,15 +328,9 @@ defineExpose<MapApi>({
   },
   resize() {
     map.value?.resize?.();
+    ensureTint();
   },
 });
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => {
-    const map: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-    return map[char] ?? char;
-  });
-}
 </script>
 
 <template>
