@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": false,
+    "jsx": "preserve",
+    "paths": {
+      "@/*": ["./web/src/*"]
+    }
+  },
+  "include": ["server/**/*.ts", "web/src/**/*.ts", "web/src/**/*.vue", "vite.config.ts"]
+}

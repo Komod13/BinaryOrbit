@@ -1,0 +1,296 @@
+@import "./tokens.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--map-land);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+input,
+textarea,
+button,
+select {
+  font-family: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---------- 骨架 ---------- */
+
+.app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.surface {
+  position: absolute;
+  inset: 0;
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.placeholder h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+}
+
+.placeholder code {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--paper-soft);
+  border: 1px solid var(--line-soft);
+}
+
+/* ---------- 布局原语（与原型 od-* 一致，按需保留） ---------- */
+
+.od-icon {
+  display: inline-block;
+  inline-size: var(--od-icon-size, 1em);
+  block-size: var(--od-icon-size, 1em);
+  flex: none;
+}
+
+.od-truncate {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.od-nowrap {
+  white-space: nowrap;
+}
+
+.od-stat {
+  display: grid;
+  gap: var(--od-gap, 2px);
+}
+
+.od-stat > * {
+  display: block;
+}
+
+/* ---------- 底部 Tab ---------- */
+
+.tabbar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 26;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10px 34px rgba(20, 24, 22, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  backdrop-filter: blur(26px) saturate(180%);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .tabbar {
+    background: rgba(255, 255, 255, 0.96);
+  }
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 46px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  transition: background 0.18s var(--ease), color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+
+.tab .od-icon {
+  --od-icon-size: 18px;
+}
+
+.tab.is-active {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(20, 24, 22, 0.08), inset 0 0 0 1px rgba(28, 30, 28, 0.05);
+}
+
+/* ---------- 统计浮窗 ---------- */
+
+.stats {
+  position: fixed;
+  top: calc(10px + var(--search-h) + var(--dock-gap) + env(safe-area-inset-top));
+  right: 12px;
+  z-index: 25;
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.stats-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--chip-h);
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.stats-toggle-num {
+  font-size: 17px;
+  line-height: 1;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-toggle-label {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.stats-card {
+  display: none;
+  align-items: stretch;
+  padding: 10px 2px;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.stats[data-open="true"] .stats-card {
+  display: flex;
+}
+
+.stat {
+  padding: 0 14px;
+  gap: 4px;
+  justify-items: center;
+  align-content: center;
+  text-align: center;
+}
+
+.stat + .stat {
+  border-left: 1px solid var(--line-soft);
+}
+
+.stat-num {
+  font-size: 21px;
+  line-height: 1.05;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+/* ---------- ≥860px：桌面 ---------- */
+
+@media (min-width: 860px) {
+  .tabbar {
+    bottom: 24px;
+  }
+
+  .tab {
+    padding: 0 20px;
+    font-size: 14px;
+  }
+
+  .stats {
+    top: 24px;
+    right: 24px;
+  }
+
+  .stats-toggle {
+    display: none;
+  }
+
+  .stats-card {
+    display: flex;
+    padding: 0 4px;
+    border-radius: 16px;
+  }
+
+  .stats-card .stat {
+    padding: 0 18px;
+  }
+
+  .stats-card .stat-num {
+    font-size: 26px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

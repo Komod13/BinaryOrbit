@@ -1,0 +1,55 @@
+/* 设计令牌 —— 与 prototype/assets/app.css 保持一致，二期换肤只动这里 */
+:root {
+  --ink: #1c1e1c;
+  --ink-2: #4c514c;
+  --ink-3: #6b7069;
+  --line: #dadbd3;
+  --line-soft: #e9eae2;
+  --paper: #ffffff;
+  --paper-soft: #f5f5f0;
+
+  --accent: #c9a1c8;
+  --accent-muted: #dbd0db;
+  --accent-ink: #8a658a;
+  --accent-soft: #f4ecf4;
+  --accent-rgb: 201, 161, 200;
+
+  --rest: #c0510b;
+  --rest-ink: #8a3a08;
+  --rest-soft: #f9ede3;
+  --rest-rgb: 192, 81, 11;
+
+  --spot: #057d5f;
+  --spot-ink: #045c46;
+  --spot-soft: #e7f2ed;
+  --spot-rgb: 5, 125, 95;
+
+  --danger: #a1283c;
+  --danger-soft: #fbeef0;
+
+  --map-land: #ecede6;
+  --map-water: #dae4e4;
+  --map-park: #dfe7d6;
+
+  /* 高德默认底图压色调，逼近原型的安静米色；0 = 原生，1 = 最灰 */
+  --map-filter: saturate(0.35) contrast(0.95) brightness(1.04);
+  --map-route-visible: 1;
+
+  --shadow-sm: 0 2px 8px rgba(24, 28, 25, 0.08);
+  --shadow-md: 0 8px 28px rgba(24, 28, 25, 0.12);
+  --shadow-lg: 0 18px 50px rgba(24, 28, 25, 0.18);
+
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --search-h: 52px;
+  --dock-gap: 10px;
+  --chip-h: 34px;
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --breakpoint: 860px;
+
+  --font-sans: "PingFang SC", "HarmonyOS Sans SC", "Hiragino Sans GB", "Microsoft YaHei",
+    system-ui, -apple-system, sans-serif;
+
+  color-scheme: light;
+}
