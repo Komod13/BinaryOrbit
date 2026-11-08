@@ -9,13 +9,24 @@ declare global {
 
 let loading: Promise<any> | null = null;
 
+/**
+ * serviceHost 统一补成绝对地址。
+ * 高德 SDK 内部用 `serviceHost.replace(/https?:\/\/\S+?\//, '').split('/')[0]` 取首段，
+ * 再和 "_AMapService" 比对；裸路径 '/_AMapService' 取到的是空串，于是会打印
+ * 「使用 JSAPI 安全模式，代理服务请以 _AMapService 作为一级路由」（localhost 下甚至是 window.alert）。
+ * 传 `http://<origin>/_AMapService` 首段就是 `_AMapService`，检查通过，静默。
+ */
+function absoluteServiceHost(config: AppConfig): string {
+  return new URL(config.serviceHost, window.location.origin).href.replace(/\/+$/, '');
+}
+
 /** 注入 JSAPI 2.0 脚本，并把安全密钥的验证交给后端代理。 */
 export function loadAMap(config: AppConfig): Promise<any> {
   if (window.AMap) return Promise.resolve(window.AMap);
   if (loading) return loading;
 
   loading = new Promise((resolve, reject) => {
-    window._AMapSecurityConfig = { serviceHost: config.serviceHost };
+    window._AMapSecurityConfig = { serviceHost: absoluteServiceHost(config) };
     const script = document.createElement('script');
     script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(config.jsKey)}&plugin=AMap.GeoJSON`;
     script.async = true;
@@ -39,7 +50,7 @@ export function loadAMap(config: AppConfig): Promise<any> {
  */
 export async function viewportFromIp(config: AppConfig): Promise<MapViewport | null> {
   try {
-    const url = `${config.serviceHost}/v3/ip?key=${encodeURIComponent(config.jsKey)}`;
+    const url = `${absoluteServiceHost(config)}/v3/ip?key=${encodeURIComponent(config.jsKey)}`;
     const response = await fetch(url, { signal: AbortSignal.timeout(6000) });
     if (!response.ok) return null;
     const body = (await response.json()) as { status?: string; rectangle?: string };
