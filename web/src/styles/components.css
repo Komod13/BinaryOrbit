@@ -420,29 +420,41 @@
   max-height: 90vh;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 12px 18px calc(24px + env(safe-area-inset-bottom));
+  padding: 8px 18px calc(20px + env(safe-area-inset-bottom));
   background: var(--paper);
   border-radius: 26px 26px 0 0;
   box-shadow: 0 -18px 50px rgba(24, 28, 25, 0.22);
   outline: none;
   animation: sheet-up 0.24s var(--ease);
+  transition: height 0.24s var(--ease);
 }
 
 @keyframes sheet-up {
   from {
     opacity: 0.6;
-    transform: translateY(28px);
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 
 .sheet-grip {
+  position: relative;
+  width: 100%;
+  height: 18px;
+  margin: 0 auto 6px;
+  background: transparent;
+  touch-action: none;
+}
+
+.sheet-grip::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: 38px;
   height: 4px;
-  margin: 0 auto 12px;
+  transform: translate(-50%, -50%);
   border-radius: 999px;
   background: var(--line);
 }
@@ -955,25 +967,24 @@ textarea:focus {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 35;
+  /* 高于高德底图里的 logo / 版权（z-index 160），上拉到全屏时不会被压住 */
+  z-index: 200;
   max-height: 56vh;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 12px 18px calc(24px + env(safe-area-inset-bottom));
+  padding: 8px 18px calc(20px + env(safe-area-inset-bottom));
   background: var(--paper);
   border-radius: 26px 26px 0 0;
   box-shadow: 0 -18px 50px rgba(24, 28, 25, 0.22);
   animation: sheet-up 0.24s var(--ease);
+  transition: height 0.24s var(--ease);
 }
 
-.dock-panel::before {
-  content: '';
-  display: block;
-  width: 38px;
-  height: 4px;
-  margin: 0 auto 12px;
-  border-radius: 999px;
-  background: var(--line);
+.dock-panel.is-dragging,
+.sheet-panel.is-dragging {
+  transition: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 @media (min-width: 860px) {
@@ -992,7 +1003,7 @@ textarea:focus {
     animation: dock-panel-in 0.2s var(--ease);
   }
 
-  .dock-panel::before {
+  .dock-panel .sheet-grip {
     display: none;
   }
 
@@ -1014,7 +1025,8 @@ textarea:focus {
   position: fixed;
   left: 50%;
   bottom: calc(156px + env(safe-area-inset-bottom));
-  z-index: 60;
+  /* 高于可上拉的底部卡片（z-index 200），提示不会被卡片盖住 */
+  z-index: 300;
   display: grid;
   gap: 8px;
   justify-items: center;
@@ -1179,6 +1191,135 @@ textarea:focus {
   .sheet.sheet--compact,
   .sheet.sheet--compact .sheet-panel {
     max-height: 56vh;
+  }
+
+  /* ---------- 移动端可上拉的卡片 ---------- */
+
+  /* 拖拽 / 全屏时解除默认高度限制，真正的全屏高度由 JS 的内联 px 控制 */
+  .dock-panel.is-dragging,
+  .dock-panel.is-expanded,
+  .sheet.is-dragging,
+  .sheet.is-expanded,
+  .sheet.is-dragging .sheet-panel,
+  .sheet.is-expanded .sheet-panel {
+    max-height: 100dvh;
+  }
+
+  /* 卡片顶部（把手 / 标题）接管手势，不参与面板内滚动 */
+  .sheet-grip,
+  .sheet-head,
+  .sheet-title,
+  .sheet-sub {
+    touch-action: none;
+  }
+
+  /* 卡片默认更紧凑：内容区留白减小，小屏也能多露一点 */
+  .dock-panel {
+    padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+
+  .dock-panel .sheet-head {
+    margin-bottom: 4px;
+  }
+
+  .dock-panel .sheet-head .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .dock-panel .sheet-title {
+    font-size: 19px;
+    line-height: 1.3;
+  }
+
+  .dock-panel .sheet-sub {
+    margin-top: 2px;
+    font-size: 12.5px;
+    line-height: 1.4;
+  }
+
+  .dock-panel .field {
+    margin-top: 10px;
+    gap: 4px;
+  }
+
+  .dock-panel .field-hint {
+    display: none;
+  }
+
+  .dock-panel input[type='search'] {
+    height: 40px;
+    font-size: 16px;
+  }
+
+  .dock-panel .search-inline .btn {
+    height: 40px;
+  }
+
+  .dock-panel .chip {
+    height: 32px;
+    padding: 0 12px;
+  }
+
+  /* 检索结果收紧成两行定高，保证 8 条在整屏内放下且不需要内部滚动 */
+  .dock-panel .results {
+    gap: 5px;
+    margin-top: 8px;
+  }
+
+  .dock-panel .result {
+    gap: 8px;
+    padding: 4px 10px;
+    border-radius: 10px;
+  }
+
+  .dock-panel .result-main {
+    gap: 0;
+    min-width: 0;
+  }
+
+  .dock-panel .result-name {
+    font-size: 13.5px;
+    line-height: 1.3;
+  }
+
+  .dock-panel .result-meta {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 11.5px;
+    line-height: 1.25;
+  }
+
+  .dock-panel .results-hint {
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .dock-panel .sheet-actions {
+    margin-top: 10px;
+  }
+
+  .dock-panel .sheet-actions .btn {
+    height: 42px;
+    font-size: 14px;
+  }
+
+  /* 上拉成整屏后，搜索面板隐藏说明性文字，把高度让给结果列表 */
+  .dock-panel.is-expanded .search-panel .sheet-title,
+  .dock-panel.is-expanded .search-panel .sheet-sub,
+  .dock-panel.is-expanded .search-panel .field > label,
+  .dock-panel.is-expanded .search-panel .field > .field-label {
+    display: none;
+  }
+
+  .dock-panel.is-expanded .search-panel .field {
+    margin-top: 8px;
+  }
+
+  .dock-panel.is-expanded .search-panel .search-inline .btn {
+    height: 40px;
   }
 }
 

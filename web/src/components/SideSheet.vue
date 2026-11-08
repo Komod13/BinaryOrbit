@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue';
+import { useSheetDrag } from '../lib/useSheetDrag.ts';
 
 const props = defineProps<{ open: boolean; labelledBy?: string }>();
 const emit = defineEmits<{ close: [] }>();
 
 const dialog = ref<HTMLDialogElement | null>(null);
 const panel = ref<HTMLElement | null>(null);
+const drag = useSheetDrag(panel);
 
 watch(
   () => props.open,
@@ -19,6 +21,7 @@ watch(
       (target ?? panel.value)?.focus({ preventScroll: true });
     } else if (!open && element.open) {
       element.close();
+      drag.reset();
     }
   },
 );

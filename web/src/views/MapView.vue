@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router';
 import AMapCanvas from '../components/AMapCanvas.vue';
 import MapDock from '../components/MapDock.vue';
 import SideSheet from '../components/SideSheet.vue';
+import DockSheet from '../components/DockSheet.vue';
 import SearchPanel from '../components/SearchPanel.vue';
 import PlaceDetailPanel from '../components/PlaceDetailPanel.vue';
 import PlaceFormPanel from '../components/PlaceFormPanel.vue';
@@ -345,19 +346,19 @@ const showEmptyHint = computed(
       "
     />
 
-    <SearchPanel
-      v-if="drawer.mode === 'search' && center"
-      class="dock-panel"
-      :center="center"
-      :filter="filter"
-      :radius="radius"
-      @update:radius="radius = $event"
-      @pick="onSearchPick"
-      @manual="onManualAdd"
-      @close="closeDrawer"
-    />
+    <DockSheet v-if="drawer.mode === 'search' && center">
+      <SearchPanel
+        :center="center"
+        :filter="filter"
+        :radius="radius"
+        @update:radius="radius = $event"
+        @pick="onSearchPick"
+        @manual="onManualAdd"
+        @close="closeDrawer"
+      />
+    </DockSheet>
 
-    <div v-if="drawer.mode === 'form-new' || drawer.mode === 'form-visit'" class="dock-panel">
+    <DockSheet v-if="drawer.mode === 'form-new' || drawer.mode === 'form-visit'">
       <PlaceFormPanel
         :tiers="config?.priceTiers ?? { low: 60, high: 150 }"
         :mode="drawer.mode === 'form-new' ? 'new' : 'visit'"
@@ -369,7 +370,7 @@ const showEmptyHint = computed(
         @saved="onSaved"
         @close="closeDrawer"
       />
-    </div>
+    </DockSheet>
 
     <SideSheet :open="sheetOpen" @close="closeDrawer">
       <PlaceDetailPanel

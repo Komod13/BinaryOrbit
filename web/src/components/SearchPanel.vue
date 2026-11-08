@@ -88,7 +88,7 @@ function pick(poi: PoiResult): void {
 </script>
 
 <template>
-  <div class="panel">
+  <div class="panel search-panel">
     <div class="sheet-head">
       <span class="tag">搜索附近</span>
       <button class="icon-btn" type="button" aria-label="关闭" @click="emit('close')">
