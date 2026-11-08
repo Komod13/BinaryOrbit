@@ -34,7 +34,6 @@ function onBackdrop(event: MouseEvent): void {
     class="sheet"
     :aria-labelledby="labelledBy"
     @click="onBackdrop"
-    @close="emit('close')"
     @cancel.prevent="emit('close')"
   >
     <div ref="panel" class="sheet-panel" tabindex="-1">

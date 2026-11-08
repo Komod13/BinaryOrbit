@@ -57,13 +57,14 @@ const placesQuery = useQuery({
 const places = computed(() => placesQuery.data.value ?? []);
 const placesLoaded = computed(() => placesQuery.isSuccess.value);
 
-// 「搜索附近」用筛选栏下方的非模态浮窗（不改对话框），详情/表单仍走右侧栏或底部抽屉
-const sheetOpen = computed(
+// 「搜索附近」与「录入表单」都挂在筛选栏下方的非模态浮窗；只有详情还用右侧栏/底部抽屉
+const dockPanelOpen = computed(
   () =>
-    drawer.value.mode === 'detail' ||
+    drawer.value.mode === 'search' ||
     drawer.value.mode === 'form-new' ||
     drawer.value.mode === 'form-visit',
 );
+const sheetOpen = computed(() => drawer.value.mode === 'detail');
 const searchRadius = computed(() => (drawer.value.mode === 'search' ? radius.value : null));
 
 const detailId = computed(() => (drawer.value.mode === 'detail' ? drawer.value.placeId : null));
@@ -147,9 +148,8 @@ function onManualAdd(name: string): void {
   drawer.value = { mode: 'form-new', poi: null, presetName: name };
 }
 
-// 移动端打开「搜索附近」时把地图容器缩到抽屉上方，让准星与半径圈保持可见
-const searching = computed(() => drawer.value.mode === 'search');
-watch(searching, async () => {
+// 移动端浮窗打开时把地图容器缩到浮窗上方，让准星与半径圈保持可见
+watch(dockPanelOpen, async () => {
   await nextTick();
   setTimeout(() => mapRef.value?.resize(), 260);
 });
@@ -230,7 +230,7 @@ function boundsView(rows: Place[]): MapViewport {
 }
 
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && drawer.value.mode === 'search') closeDrawer();
+  if (event.key === 'Escape' && dockPanelOpen.value) closeDrawer();
 }
 
 onMounted(() => window.addEventListener('keydown', onKeydown));
@@ -246,7 +246,7 @@ const showEmptyHint = computed(
 </script>
 
 <template>
-  <section class="surface map-surface" :class="{ 'is-searching': searching }" aria-label="地图">
+  <section class="surface map-surface" :class="{ 'has-dock-panel': dockPanelOpen }" aria-label="地图">
     <AMapCanvas
       v-if="config && initialView"
       ref="mapRef"
@@ -300,17 +300,8 @@ const showEmptyHint = computed(
       @close="closeDrawer"
     />
 
-    <SideSheet :open="sheetOpen" @close="closeDrawer">
-      <PlaceDetailPanel
-        v-if="detailId !== null"
-        :place-id="detailId"
-        :tiers="config?.priceTiers ?? { low: 60, high: 150 }"
-        @again="drawer = { mode: 'form-visit', place: $event }"
-        @deleted="closeDrawer"
-        @close="closeDrawer"
-      />
+    <div v-if="drawer.mode === 'form-new' || drawer.mode === 'form-visit'" class="dock-panel">
       <PlaceFormPanel
-        v-else-if="drawer.mode === 'form-new' || drawer.mode === 'form-visit'"
         :tiers="config?.priceTiers ?? { low: 60, high: 150 }"
         :mode="drawer.mode === 'form-new' ? 'new' : 'visit'"
         :poi="drawer.mode === 'form-new' ? drawer.poi : null"
@@ -319,6 +310,17 @@ const showEmptyHint = computed(
         :center="center ?? { lng: CHINA_VIEW.lng, lat: CHINA_VIEW.lat }"
         :places="places"
         @saved="onSaved"
+        @close="closeDrawer"
+      />
+    </div>
+
+    <SideSheet :open="sheetOpen" @close="closeDrawer">
+      <PlaceDetailPanel
+        v-if="detailId !== null"
+        :place-id="detailId"
+        :tiers="config?.priceTiers ?? { low: 60, high: 150 }"
+        @again="drawer = { mode: 'form-visit', place: $event }"
+        @deleted="closeDrawer"
         @close="closeDrawer"
       />
     </SideSheet>

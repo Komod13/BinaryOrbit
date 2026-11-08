@@ -1254,9 +1254,9 @@ textarea:focus {
   }
 }
 
-/* 移动端「搜索附近」：地图让出下半屏，准星与半径圈保持可见 */
+/* 移动端浮窗（搜索附近 / 录入表单）：地图让出下半屏，准星与半径圈保持可见 */
 @media (max-width: 859px) {
-  .map-surface.is-searching .amap-shell {
+  .map-surface.has-dock-panel .amap-shell {
     bottom: 56vh;
   }
 }
