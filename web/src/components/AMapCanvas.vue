@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { installMapTint, loadAMap, mapFeatureOptions, mapRenderOptions } from '../lib/amap.ts';
+import { forceDomRenderer, installMapTint, loadAMap, mapFeatureOptions, mapRenderOptions } from '../lib/amap.ts';
 import { diagState } from '../lib/diag.ts';
 import { shortName } from '../lib/format.ts';
 import type { AppConfig, FilterKind, MapApi, MapViewport, Place } from '../lib/types.ts';
@@ -269,7 +269,10 @@ onMounted(async () => {
 
   const renderOptions = mapRenderOptions();
   const featureOptions = mapFeatureOptions(renderOptions);
-  diagState.mapOptions = `${featureOptions.features.join('+')}${featureOptions.showLabel ? '+labels' : ''}${renderOptions.lowRes ? '+1x' : ''}`;
+  const domForced = renderOptions.forceDom && forceDomRenderer(AMap);
+  diagState.mapOptions =
+    `${featureOptions.features.join('+')}${featureOptions.showLabel ? '+labels' : ''}` +
+    `${renderOptions.lowRes ? '+1x' : ''}${domForced ? '+dom' : ''}`;
   const instance = new AMap.Map(host.value, {
     zoom: props.initialView.zoom,
     center: [props.initialView.lng, props.initialView.lat],

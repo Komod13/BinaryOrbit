@@ -401,18 +401,22 @@ iPad / 手机上开不了 DevTools，所以把采样搬回电脑控制台：
 
 两个对照开关（可叠加在 `?debug=1` 上，`query` / `mapOptions` 字段会记下）：
 
-- `dpr=1`：在 `loadAMap` 里把 `window.detectRetina = 0`（必须在高德脚本执行前设），让底图按 1x 而不是 dpr 倍渲染；iPad 实测无改善，不是填充率问题；
-- `labels=0` / `nopoint=1` / `nobuilding=1` / `lean=1`：分别关掉底图注记 / POI 图标 / 建筑 / 只剩底色+道路，用来二分到底是哪类要素卡。
+- `dpr=1`：在 `loadAMap` 里把 `window.detectRetina = 0`（必须在高德脚本执行前设），让底图按 1x 而不是 dpr 倍渲染；iPad 实测无改善；
+- `labels=0` / `nopoint=1` / `nobuilding=1` / `lean=1`：分别关掉底图注记 / POI 图标 / 建筑 / 只剩底色+道路；
+- `dom=1`：在 `new AMap.Map` 前把 `AMap.Browser.isWebGL = false`（并置 `baseRender = 'd'`），高德会落到 DomRender → 栅格瓦片，注记烘在图片里。
 
-iPad 实测（Chrome iOS，dpr 2，zoom 15–18，0 条地点）：
+iPad 实测（Chrome iOS，dpr 2，0 条地点）：
 
 | URL | minFps | frozenFrames | loopLagMs |
 |---|---|---|---|
 | `?debug=1` | 3–6 | 3–12 | 295–353 |
 | `?debug=1&dpr=1` | 5–11 | 8–10 | 298–308 |
-| `?debug=1&dpr=1&lean=1` | 56–58 | 0 | 9–26 |
+| `?debug=1&labels=0` | 40–58 | 0 | 10–70 |
+| `?debug=1&nopoint=1` | 5–6 | 6–8 | 316–362 |
+| `?debug=1&nobuilding=1` | 4–7 | 12–20 | 333–374 |
+| `?debug=1&lean=1` | 56–58 | 0 | 9–26 |
 
-即主线程被高德底图矢量要素（注记 / POI）占据，与标记层、网络、像素填充率无关；进一步用 `labels=0` 与 `nopoint=1` 分到具体要素，再决定触屏默认怎么降。
+定位结论：瓶颈在高德 2.0 WebGL 的**矢量文字注记**（主线程排版、建纹理），POI 图标 / 建筑 / 填充率 / 网络都已排除。后续按 `dom=1` 的结果决定触屏默认：能保注记且流畅就默认 DomRender，否则触屏在 zoom ≥ 13 关底图注记（自有标记名照旧显示）。
 
 面板里的 `build` 与启动横幅的「前端 bundle · 构建时间」对比，能直接确认手机上跑的是不是最新前端；不能对上就是 dist 旧 / 浏览器缓存，先重启 `启动.bat`（会自动重建）。
 

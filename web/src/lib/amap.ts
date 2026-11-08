@@ -58,6 +58,8 @@ export interface MapRenderOptions {
   noPoint: boolean;
   /** 不画建筑 */
   noBuilding: boolean;
+  /** 强制走 DOM（栅格瓦片）渲染，注记烘在瓦片里，不走 WebGL 矢量注记 */
+  forceDom: boolean;
 }
 
 export function mapRenderOptions(search = window.location.search): MapRenderOptions {
@@ -68,10 +70,24 @@ export function mapRenderOptions(search = window.location.search): MapRenderOpti
     noLabel: params.get('labels') === '0',
     noPoint: params.has('nopoint'),
     noBuilding: params.has('nobuilding'),
+    forceDom: params.has('dom'),
   };
 }
 
 const ALL_FEATURES = ['bg', 'point', 'road', 'building'];
+
+/**
+ * 强制用 DOM（栅格瓦片）渲染。AMap 2.0 在启动渲染模块时只看 `AMap.Browser.isWebGL`，
+ * 为 false 就落到 DomRender。必须在 `new AMap.Map` 之前改。
+ * 栅格瓦片的注记是烘在图片里的，不经过矢量注记排版，用来验证「换渲染路线能否保住注记又不卡」。
+ */
+export function forceDomRenderer(amap: unknown): boolean {
+  const support = (amap as { Browser?: Record<string, unknown> } | undefined)?.Browser;
+  if (!support) return false;
+  support.isWebGL = false;
+  support.baseRender = 'd';
+  return true;
+}
 
 /** 把 URL 开关翻译成 AMap 的 `features` / `showLabel`。 */
 export function mapFeatureOptions(options: MapRenderOptions): {
