@@ -9,9 +9,10 @@
 - 地图上需要显示饭店、景点标记。走过的城市在另一张页面上按城市区域高亮标记。
 - 统计功能需要对饭店总数、景点总数、城市总数进行统计。可以以卡片形式展示。
 
-### 1.1 本期范围修订（已确认）
+### 1.1 范围确认
 
 - **不含定位**：手机定位需要 HTTPS，本期不做 HTTPS，因此"附近"改为**以地图中心为锚点的周边检索**（拖地图 → 搜这一带）。
+
 - **不含导入**：历史数据手动录入，不做 Excel/截图导入。
 - **不含照片/分享/时间轴**：留到二期，数据模型预留字段。
 - **部署形态**：本机自托管，局域网 IP 访问，仅两人使用，无账号体系。
@@ -62,7 +63,7 @@
 │  GET  /                → 托管 web/dist 静态资源（SPA fallback）               │
 │  GET  /api/config      → { jsKey, serviceHost: "/_AMapService" }             │
 │  ALL  /api/*           → 业务接口（places / visits / cities / stats / search） │
-│  ALL  /_AMapService/*  → 转发 restapi.amap.com 并注入 jscode（安全密钥）      │
+│  ALL  /_AMapService/*  → 转发 restapi.amap.com，注入 jscode + platform=JS   │
 │  SQLite                → data/orbit.db（node:sqlite，同步 API）              │
 │  其他                   → data/geo/*.json（地级市边界缓存，DataV 源，免 key）  │
 └──────────────────────────────────────────────────────────────────────────────┘
@@ -165,7 +166,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS place (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  type         TEXT NOT NULL CHECK (type IN ('restaurant','attraction')),
+  type         TEXT NOT NULL CHECK (type IN ('restaurant','spot')),
   name         TEXT NOT NULL,
   external_id  TEXT UNIQUE,            -- 高德 POI id；手选点为 NULL
   address      TEXT,
@@ -175,29 +176,29 @@ CREATE TABLE IF NOT EXISTS place (
   city_name    TEXT,
   city_adcode  TEXT,                   -- 用于城市反推与高亮
   district     TEXT,
-  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  created_time   TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_time   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS visit (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   place_id   INTEGER NOT NULL REFERENCES place(id) ON DELETE CASCADE,
-  visited_on TEXT NOT NULL,            -- 'YYYY-MM-DD'
+  visited_date TEXT NOT NULL,            -- 'YYYY-MM-DD'
   rating     INTEGER CHECK (rating BETWEEN 1 AND 5),
   price_tier TEXT CHECK (price_tier IN ('low','mid','high')),  -- 仅餐厅
   note       TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_time TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_visit_place ON visit(place_id, visited_on DESC);
+CREATE INDEX IF NOT EXISTS idx_visit_place ON visit(place_id, visited_date DESC);
 
 CREATE TABLE IF NOT EXISTS city_manual (   -- 手动补标的"去过"城市
   adcode    TEXT PRIMARY KEY,
   name      TEXT NOT NULL,
-  marked_at TEXT NOT NULL DEFAULT (datetime('now'))
+  marked_time TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ```
 
-城市的唯一口径：`SELECT DISTINCT city_adcode FROM place WHERE city_adcode IS NOT NULL UNION SELECT adcode FROM city_manual`。统计三张卡：`count(place where type='restaurant')`、`count(place where type='attraction')`、上面这个集合的大小。
+城市的唯一口径：`SELECT DISTINCT city_adcode FROM place WHERE city_adcode IS NOT NULL UNION SELECT adcode FROM city_manual`。统计三张卡：`count(place where type='restaurant')`、`count(place where type='spot')`、上面这个集合的大小。
 
 ### 4.2 API 清单
 
@@ -223,7 +224,7 @@ CREATE TABLE IF NOT EXISTS city_manual (   -- 手动补标的"去过"城市
 - `searchText` / `searchAround` / `regeo` 三个函数，统一：注入 `key=AMAP_WEB_KEY`、`city_limit=false`、超时 5s、失败重试 1 次；
 - 错误映射：高德 `infocode` → 中文可读错误（`10001` key 错误、`10003` 超配额、`10009` 权限不足等），前端 toast 直接可读；
 - **缓存**：`place/text|around` 的响应用内存 LRU（键＝参数串，TTL 10min）+ 结果里的 POI 详情落 `place` 表时即为长期缓存；同一家店第二次搜索秒出；
-- `/_AMapService/*` 反向代理：转发到 `https://restapi.amap.com/*`，追加 `jscode=AMAP_SECURITY_CODE`，仅允许 `GET`，5s 超时。
+- `/_AMapService/*` 反向代理：转发到 `https://restapi.amap.com/*`，**追加 `jscode=AMAP_SECURITY_CODE` 的同时必须补 `platform=JS&s=rsv3`**（实测只加 `jscode` 会返回 `10009 USERKEY_PLAT_NOMATCH`），仅允许 `GET`，5s 超时。
 
 ### 4.4 运行与运维
 
