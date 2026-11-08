@@ -794,6 +794,23 @@
   width: 0;
 }
 
+/* iOS 的 date 控件文字水平对齐不受 text-align 控制，用覆盖层保证居中 */
+.field-control--date {
+  position: relative;
+}
+
+.date-display {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-size: 16px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
 .field-label,
 .field label,
 .field legend {
@@ -841,6 +858,16 @@ textarea {
 
   input[type='date']::-webkit-date-and-time-value {
     text-align: center;
+  }
+
+  .field-control--date > input[type='date'] {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    caret-color: transparent;
+  }
+
+  .field-control--date > .date-display {
+    display: flex;
   }
 }
 

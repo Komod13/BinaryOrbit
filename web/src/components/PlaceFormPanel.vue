@@ -58,6 +58,13 @@ const subtitle = computed(() => {
   return '手动标记 · 地图中心附近';
 });
 
+/** iOS 的 date 控件无法可靠地用 text-align 居中，用一层覆盖文本保证视觉居中 */
+const displayDate = computed(() => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.value);
+  if (!match) return '';
+  return `${Number(match[1])}年${Number(match[2])}月${Number(match[3])}日`;
+});
+
 function validate(): boolean {
   nameError.value = '';
   dateError.value = '';
@@ -228,8 +235,9 @@ function keepNew(): void {
 
     <div class="field" :class="{ 'is-invalid': dateError }">
       <label for="form-date">到访日期</label>
-      <div class="field-control">
+      <div class="field-control field-control--date">
         <input id="form-date" v-model="date" type="date" max="2100-12-31" />
+        <span class="date-display" aria-hidden="true">{{ displayDate }}</span>
       </div>
       <p v-if="dateError" class="field-error">{{ dateError }}</p>
     </div>
