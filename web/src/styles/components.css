@@ -772,6 +772,28 @@
   min-width: 0;
 }
 
+/* 表单控件收紧一层 flex 容器：iOS 的 date / textarea 固有宽度较大，
+   以 width: 0 + flex-grow 强制按卡片内容宽度渲染 */
+.field-control {
+  display: flex;
+  min-width: 0;
+}
+
+.field-control > input,
+.field-control > textarea {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* 提高一级选择器优先级，盖过下面 input / textarea 的 width: 100% */
+.field-control > input[type='text'],
+.field-control > input[type='search'],
+.field-control > input[type='date'],
+.field-control > textarea {
+  width: 0;
+}
+
 .field-label,
 .field label,
 .field legend {
@@ -805,6 +827,20 @@ textarea {
   background: #fff;
   font-size: 16px;
   color: var(--ink);
+}
+
+/* iOS Safari 的 date 控件默认外观带固有最小宽度，去掉后才会遵循容器宽度 */
+@supports (-webkit-touch-callout: none) {
+  input[type='date'] {
+    display: block;
+    min-width: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  input[type='date']::-webkit-date-and-time-value {
+    text-align: left;
+  }
 }
 
 textarea {

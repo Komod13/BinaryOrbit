@@ -199,7 +199,9 @@ function keepNew(): void {
 
     <div v-if="mode === 'new' && !poi" class="field" :class="{ 'is-invalid': nameError }">
       <label for="form-name">名称</label>
-      <input id="form-name" v-model="name" type="text" autocomplete="off" data-autofocus />
+      <div class="field-control">
+        <input id="form-name" v-model="name" type="text" autocomplete="off" data-autofocus />
+      </div>
       <p v-if="nameError" class="field-error">{{ nameError }}</p>
     </div>
 
@@ -226,7 +228,9 @@ function keepNew(): void {
 
     <div class="field" :class="{ 'is-invalid': dateError }">
       <label for="form-date">到访日期</label>
-      <input id="form-date" v-model="date" type="date" max="2100-12-31" />
+      <div class="field-control">
+        <input id="form-date" v-model="date" type="date" max="2100-12-31" />
+      </div>
       <p v-if="dateError" class="field-error">{{ dateError }}</p>
     </div>
 
@@ -257,7 +261,9 @@ function keepNew(): void {
 
     <div class="field">
       <label for="form-note">备注（可选）</label>
-      <textarea id="form-note" v-model="note" rows="2" maxlength="80" placeholder="一句话记下当时的感觉" />
+      <div class="field-control">
+        <textarea id="form-note" v-model="note" rows="2" maxlength="80" placeholder="一句话记下当时的感觉" />
+      </div>
     </div>
 
     <div v-if="mergeCandidate" class="merge-box">
