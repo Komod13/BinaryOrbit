@@ -135,16 +135,29 @@
 - `mapFramesPerSec` 只有几帧、`slowResources` 里有高德瓦片 → 在等网络；
 - `places` 有值但 `markers` 是 0 → 不是数据没了，是筛选或未重建，把 `filter` 切回「全部」。
 
-### 两个对照开关
+### 底图要素对照开关
 
-卡顿主要花在高德底图时，用这两个参数做 A/B（可以和 `?debug=1` 一起用）：
+卡顿大多花在高德底图的矢量要素上时，用这些参数做二分（可叠加 `?debug=1`）：
 
-| 参数 | 作用 | 代价 |
+| 参数 | 作用 | 实测 |
 |---|---|---|
-| `dpr=1` | 让高德按 1x 而不是 dpr 2 渲染（iPad 上像素量降到 1/4） | 文字/线条略软 |
-| `lean=1` | 底图只留底色和道路（`features: ['bg','road']`，关注记） | 看不到底图 POI；只对 WebGL 渲染生效 |
+| `labels=0` | 只关底图文字注记（`showLabel:false`） | 用来判断是不是注记排版在吞主线程 |
+| `nopoint=1` | 只关 POI 图标（`features` 去掉 `point`） | 用来判断是不是 POI 图标太多 |
+| `nobuilding=1` | 只关建筑物（`features` 去掉 `building`） | 2D 下影响可能很小 |
+| `lean=1` | 等于只留底色 + 道路（labels 与 point 都关） | iPad 上从 `minFps 3` → `58`，丝滑 |
+| `dpr=1` | 高德按 1x 而不是 dpr 2 渲染 | iPad 实测**无改善**（所以不是填充率问题） |
 
-例如 `.../map?debug=1&dpr=1`，拖同样的距离，看 `minFps` / `frozenFrames` 有没有明显改善。上报里的 `query` 字段会记下当时用的参数。
+上报里的 `query` 和 `mapOptions` 会记下当时用的参数与实际生效的要素，不用靠记。
+
+已验证的 iPad 基线（2026-11-08，Chrome iOS / iPadOS 18，dpr 2，zoom 15–18，地点 0 条）：
+
+| URL | minFps | frozenFrames | loopLagMs |
+|---|---|---|---|
+| `?debug=1` | 3–6 | 3–12 | 295–353 |
+| `?debug=1&dpr=1` | 5–11 | 8–10 | 298–308 |
+| `?debug=1&dpr=1&lean=1` | 56–58 | 0 | 9–26 |
+
+结论：主线程被高德底图要素占据（`loopLagMs` 与帧冻结同步），与我们的标记、网络、像素填充率都无关。
 
 另外启动横幅里会打一行 `前端 index-xxxxx.js · 构建时间`：手机上报的 `build` 应该和它一致，不一致就说明手机上跑的是旧前端（换个页面/强制刷新）。
 

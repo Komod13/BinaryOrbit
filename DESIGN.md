@@ -399,12 +399,20 @@ iPad / 手机上开不了 DevTools，所以把采样搬回电脑控制台：
 
 判别口径：`minFps` 低 + `frozenFrames` 多 + `loopLagMs` 大 → 主线程忙（高德渲染 JS / 我们的代码）；`loopLagMs` 小 → 主线程空闲，卡在 GPU / 合成器；`mapFramesPerSec` 低 + `slowResources` 有高德瓦片 → 等网络。
 
-两个对照开关（可叠加在 `?debug=1` 上，`query` 字段会记下）：
+两个对照开关（可叠加在 `?debug=1` 上，`query` / `mapOptions` 字段会记下）：
 
-- `dpr=1`：在 `loadAMap` 里把 `window.detectRetina = 0`（必须在高德脚本执行前设），让底图按 1x 而不是 dpr 倍渲染，iPad 上像素量降到 1/4；
-- `lean=1`：`features: ['bg','road'] + showLabel: false`，只画底色与道路，用来判断卡顿是不是底图矢量要素太多（仅对 WebGL 渲染有意义）。
+- `dpr=1`：在 `loadAMap` 里把 `window.detectRetina = 0`（必须在高德脚本执行前设），让底图按 1x 而不是 dpr 倍渲染；iPad 实测无改善，不是填充率问题；
+- `labels=0` / `nopoint=1` / `nobuilding=1` / `lean=1`：分别关掉底图注记 / POI 图标 / 建筑 / 只剩底色+道路，用来二分到底是哪类要素卡。
 
-iPad 上报的典型结论：`renderer webgl` + `dpr 2` + `minFps 3` + `markers 0` → 纯底图 WebGL 渲染在 iPad 上掉帧；这时对比 `dpr=1` 的采样，若明显改善就可以把 1x 渲染做成触屏默认（或提供开关）。
+iPad 实测（Chrome iOS，dpr 2，zoom 15–18，0 条地点）：
+
+| URL | minFps | frozenFrames | loopLagMs |
+|---|---|---|---|
+| `?debug=1` | 3–6 | 3–12 | 295–353 |
+| `?debug=1&dpr=1` | 5–11 | 8–10 | 298–308 |
+| `?debug=1&dpr=1&lean=1` | 56–58 | 0 | 9–26 |
+
+即主线程被高德底图矢量要素（注记 / POI）占据，与标记层、网络、像素填充率无关；进一步用 `labels=0` 与 `nopoint=1` 分到具体要素，再决定触屏默认怎么降。
 
 面板里的 `build` 与启动横幅的「前端 bundle · 构建时间」对比，能直接确认手机上跑的是不是最新前端；不能对上就是 dist 旧 / 浏览器缓存，先重启 `启动.bat`（会自动重建）。
 

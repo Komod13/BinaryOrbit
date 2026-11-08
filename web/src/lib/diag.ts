@@ -20,6 +20,8 @@ export const diagState = {
   places: 0,
   zoom: 0,
   rebuildMs: 0,
+  /** 当前生效的底图要素选项，如 `bg+point+road+building+labels` */
+  mapOptions: '?',
   /** 地图 move / mapmove 等事件计数，由面板换算成「每秒重绘次数」 */
   mapFrames: 0,
 };
@@ -141,6 +143,7 @@ export function installDiag(): void {
     mapFramesMin: windowStats.mapFpsMin,
     mapFramesMax: windowStats.mapFpsMax,
     renderer: diagState.renderer,
+    mapOptions: diagState.mapOptions,
     markers: diagState.markers,
     places: diagState.places,
     zoom: diagState.zoom,
@@ -215,8 +218,7 @@ export function installDiag(): void {
       put('build', __BUILD_STAMP__);
       put('fps', `${fps} fps（最低 ${windowStats.minFps}）· 卡顿 ${windowStats.frozenFrames} 次`);
       put('tasks', `主线程延迟 ${Math.round(windowStats.maxLoopLagMs)}ms · 长任务 ${windowStats.longTasks}`);
-      put('map', `地图 ${mapFps} 帧/s · ${diagState.renderer} · zoom ${diagState.zoom}`);
-      put('markers', `标记 ${diagState.markers}/${diagState.places} · 重建 ${Math.round(diagState.rebuildMs)}ms`);
+      put('map', `地图 ${mapFps} 帧/s · ${diagState.renderer} · zoom ${diagState.zoom}`);      put('markers', `标记 ${diagState.markers}/${diagState.places} · 重建 ${Math.round(diagState.rebuildMs)}ms`);
       put('env', `dpr ${window.devicePixelRatio} · ${window.innerWidth}×${window.innerHeight}`);
       window.__boDiag = snapshot('实时');
       frames = 0;

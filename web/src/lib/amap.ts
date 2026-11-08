@@ -50,8 +50,14 @@ function absoluteServiceHost(config: AppConfig): string {
 export interface MapRenderOptions {
   /** 强制底图按 1x 渲染（iPad 上像素量降到 1/4，画面会略软） */
   lowRes: boolean;
-  /** 精简底图：只留底色与道路，不要 POI / 注记 */
+  /** 只留底色与道路，不画 POI 与注记 */
   lean: boolean;
+  /** 不画底图文字注记（路名 / POI 名） */
+  noLabel: boolean;
+  /** 不画 POI 点（图标） */
+  noPoint: boolean;
+  /** 不画建筑 */
+  noBuilding: boolean;
 }
 
 export function mapRenderOptions(search = window.location.search): MapRenderOptions {
@@ -59,7 +65,26 @@ export function mapRenderOptions(search = window.location.search): MapRenderOpti
   return {
     lowRes: params.get('dpr') === '1',
     lean: params.has('lean'),
+    noLabel: params.get('labels') === '0',
+    noPoint: params.has('nopoint'),
+    noBuilding: params.has('nobuilding'),
   };
+}
+
+const ALL_FEATURES = ['bg', 'point', 'road', 'building'];
+
+/** 把 URL 开关翻译成 AMap 的 `features` / `showLabel`。 */
+export function mapFeatureOptions(options: MapRenderOptions): {
+  features: string[];
+  showLabel: boolean;
+} {
+  if (options.lean) return { features: ['bg', 'road'], showLabel: false };
+  const features = ALL_FEATURES.filter((feature) => {
+    if (feature === 'point' && options.noPoint) return false;
+    if (feature === 'building' && options.noBuilding) return false;
+    return true;
+  });
+  return { features, showLabel: !options.noLabel };
 }
 
 /**
