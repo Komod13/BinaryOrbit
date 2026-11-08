@@ -119,3 +119,136 @@ export async function handleAmapService(request: Request, url: URL): Promise<Res
     );
   }
 }
+
+/* ---------------- POI 检索 / 逆地理 ---------------- */
+
+export type PlaceType = 'restaurant' | 'spot';
+
+export interface Poi {
+  id: string;
+  name: string;
+  type: PlaceType;
+  typecode: string;
+  category: string;
+  address: string;
+  lng: number;
+  lat: number;
+  distance: number | null;
+  cityName: string | null;
+  district: string | null;
+  province: string | null;
+}
+
+/** 高德的空值有时是空字符串、有时是空数组，统一成字符串。 */
+function plain(value: unknown): string {
+  if (Array.isArray(value)) return value.length ? String(value[0]) : '';
+  if (value === null || value === undefined) return '';
+  return String(value);
+}
+
+/** 050xxx 餐饮服务 → 餐厅；11xxxx 风景名胜、14xxxx 科教文化 → 景点；其余丢弃。 */
+export function classifyTypecode(typecode: unknown): PlaceType | null {
+  const code = plain(typecode);
+  if (code.startsWith('05')) return 'restaurant';
+  if (code.startsWith('11') || code.startsWith('14')) return 'spot';
+  return null;
+}
+
+const TYPE_FILTER: Record<PlaceType, string> = {
+  restaurant: '050000',
+  spot: '110000|140000',
+};
+
+function mapPoi(raw: Record<string, unknown>, distance: unknown = null): Poi | null {
+  const type = classifyTypecode(raw.typecode);
+  if (!type) return null;
+  const location = plain(raw.location).split(',');
+  const lng = Number(location[0]);
+  const lat = Number(location[1]);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+  const parsedDistance = Number(plain(distance));
+  return {
+    id: plain(raw.id),
+    name: plain(raw.name),
+    type,
+    typecode: plain(raw.typecode),
+    category: plain(raw.type),
+    address: plain(raw.address),
+    lng,
+    lat,
+    distance: Number.isFinite(parsedDistance) ? parsedDistance : null,
+    cityName: plain(raw.cityname) || null,
+    district: plain(raw.adname) || null,
+    province: plain(raw.pname) || null,
+  };
+}
+
+function mapPois(body: Record<string, unknown>): Poi[] {
+  const pois = (body.pois ?? []) as Record<string, unknown>[];
+  return pois.map((raw) => mapPoi(raw, raw.distance)).filter((poi): poi is Poi => poi !== null);
+}
+
+export function searchAround(
+  lng: number,
+  lat: number,
+  radius: number,
+  type: PlaceType,
+): Promise<Record<string, unknown>> {
+  return amapGet('/v3/place/around', {
+    location: `${lng},${lat}`,
+    radius,
+    types: TYPE_FILTER[type],
+    sortrule: 'distance',
+    offset: 25,
+    page: 1,
+    extensions: 'base',
+  });
+}
+
+export function searchText(
+  keyword: string,
+  type: PlaceType | undefined,
+  city: string | undefined,
+): Promise<Record<string, unknown>> {
+  return amapGet('/v3/place/text', {
+    keywords: keyword,
+    types: type ? TYPE_FILTER[type] : undefined,
+    city: city || undefined,
+    citylimit: city ? 'true' : 'false',
+    offset: 20,
+    page: 1,
+    extensions: 'base',
+  });
+}
+
+export { mapPois };
+
+export interface Regeo {
+  province: string;
+  cityName: string | null;
+  district: string | null;
+  adcode: string | null;
+  address: string;
+}
+
+export async function regeo(lng: number, lat: number): Promise<Regeo> {
+  const body = (await amapGet('/v3/geocode/regeo', { location: `${lng},${lat}` })) as {
+    regeocode?: {
+      formatted_address?: string;
+      addressComponent?: {
+        province?: string;
+        city?: unknown;
+        district?: string;
+        adcode?: string;
+      };
+    };
+  };
+  const component = body.regeocode?.addressComponent ?? {};
+  return {
+    province: plain(component.province),
+    cityName: plain(component.city) || null,
+    district: plain(component.district) || null,
+    adcode: plain(component.adcode) || null,
+    address: plain(body.regeocode?.formatted_address),
+  };
+}

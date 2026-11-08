@@ -9,7 +9,16 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import qrcode from 'qrcode-terminal';
 import { getConfig, loadEnvFile, validateConfig } from './env.ts';
 import { getDb } from './db.ts';
-import { handleAmapService } from './amap.ts';
+import { AmapError, handleAmapService } from './amap.ts';
+import { ValidationError } from './validate.ts';
+import { configRoute } from './routes/config.ts';
+import { placesRoute } from './routes/places.ts';
+import { visitsRoute } from './routes/visits.ts';
+import { citiesRoute } from './routes/cities.ts';
+import { statsRoute } from './routes/stats.ts';
+import { searchRoute } from './routes/search.ts';
+import { regeoRoute } from './routes/regeo.ts';
+import { cityDictCount, syncCityDict } from './cities.ts';
 
 const DIST_DIR = fileURLToPath(new URL('../web/dist', import.meta.url));
 const DIST_INDEX = join(DIST_DIR, 'index.html');
@@ -26,14 +35,13 @@ export function createApp() {
 
   app.get('/api/health', (c) => c.json({ ok: true, uptime: process.uptime() }));
 
-  app.get('/api/config', (c) => {
-    const config = getConfig();
-    return c.json({
-      jsKey: config.jsKey,
-      serviceHost: '/_AMapService',
-      priceTiers: config.priceTiers,
-    });
-  });
+  app.route('/api/config', configRoute);
+  app.route('/api/places', placesRoute);
+  app.route('/api/visits', visitsRoute);
+  app.route('/api/cities', citiesRoute);
+  app.route('/api/stats', statsRoute);
+  app.route('/api/search', searchRoute);
+  app.route('/api/regeo', regeoRoute);
 
   app.all('/_AMapService/*', (c) => handleAmapService(c.req.raw, new URL(c.req.url)));
 
@@ -45,11 +53,15 @@ export function createApp() {
   });
 
   app.onError((error, c) => {
-    console.error(`[error] ${c.req.method} ${c.req.path}`, error);
-    if (c.req.path.startsWith('/api/') || c.req.path.startsWith('/_AMapService/')) {
-      return c.json({ error: error.message ?? '服务器内部错误' }, 500);
+    const isApi = c.req.path.startsWith('/api/') || c.req.path.startsWith('/_AMapService/');
+    if (error instanceof ValidationError) {
+      return isApi ? c.json({ error: error.message }, 400) : c.text(error.message, 400);
     }
-    return c.text('服务器内部错误', 500);
+    if (error instanceof AmapError) {
+      return isApi ? c.json({ error: error.message, infocode: error.infocode }, 502) : c.text(error.message, 502);
+    }
+    console.error(`[error] ${c.req.method} ${c.req.path}`, error);
+    return isApi ? c.json({ error: error.message ?? '服务器内部错误' }, 500) : c.text('服务器内部错误', 500);
   });
 
   if (existsSync(DIST_INDEX)) {
@@ -110,6 +122,18 @@ function printBanner(port: number): void {
   console.log('');
 }
 
+async function bootstrapCityDict(): Promise<void> {
+  if (cityDictCount() > 0) return;
+  try {
+    const count = await syncCityDict();
+    console.log(`  城市字典已同步：${count} 条`);
+  } catch (error) {
+    console.warn(
+      `  [warn] 城市字典同步失败（城市归属可能落空，可在网络正常后重启）：${(error as Error).message}`,
+    );
+  }
+}
+
 function main(): void {
   loadEnvFile();
 
@@ -123,6 +147,7 @@ function main(): void {
   }
 
   getDb();
+  void bootstrapCityDict();
   const app = createApp();
 
   const server = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' }, () => {
