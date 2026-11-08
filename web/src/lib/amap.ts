@@ -36,8 +36,13 @@ export interface LabelSettings {
 export function resolveLabels(config: AppConfig, search = window.location.search): LabelSettings {
   const params = new URLSearchParams(search);
   const raw = params.get('labels');
+  // `.env` 的 auto 只对触屏生效（触屏走 WebGL 矢量注记，高 zoom 会把主线程占满）；
+  // 鼠标设备没有这个负担，按 on 处理，桌面行为和以前一致。
+  const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(any-pointer: coarse)').matches;
+  const envMode: LabelsMode = config.mapLabels === 'auto' && !coarse ? 'on' : config.mapLabels;
+  // URL 参数用于调试，显式写 auto 就任何设备都按 zoom 分级
   const mode: LabelsMode =
-    raw === '1' ? 'on' : raw === '0' || raw === 'off' ? 'off' : raw === 'auto' ? 'auto' : config.mapLabels;
+    raw === '1' ? 'on' : raw === '0' || raw === 'off' ? 'off' : raw === 'auto' ? 'auto' : envMode;
   const zoomOverride = Number(params.get('labelzoom'));
   const maxZoom = Number.isFinite(zoomOverride) && zoomOverride > 0 ? zoomOverride : config.mapLabelMaxZoom;
   return { mode, maxZoom };

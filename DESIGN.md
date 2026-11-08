@@ -407,7 +407,7 @@ iPad / 手机上开不了 DevTools，所以把采样搬回电脑控制台：
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `MAP_LABELS` | `auto` | `auto` 低于 `MAP_LABEL_MAX_ZOOM` 才显示；`on` 始终显示；`off` 始终隐藏 |
+| `MAP_LABELS` | `auto` | `auto` 仅在触屏上按 zoom 分级（鼠标设备视为 `on`）；`on` 始终显示；`off` 始终隐藏 |
 | `MAP_LABEL_MAX_ZOOM` | `12` | `auto` 的上限 zoom（3–18） |
 
 桌面端走栅格瓦片（注记烘在图片里），这套开关只对 WebGL 渲染（iPad / 手机）生效。
