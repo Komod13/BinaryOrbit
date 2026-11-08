@@ -836,10 +836,11 @@ textarea {
     min-width: 0;
     -webkit-appearance: none;
     appearance: none;
+    text-align: center;
   }
 
   input[type='date']::-webkit-date-and-time-value {
-    text-align: left;
+    text-align: center;
   }
 }
 
