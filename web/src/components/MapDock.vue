@@ -140,7 +140,6 @@ const chips = computed(() => {
   <header class="dock">
     <div class="dock-row">
       <div class="search-field">
-        <span class="search-glyph"><Icon name="search" :size="18" /></span>
         <input
           v-model="input"
           type="search"
@@ -160,6 +159,7 @@ const chips = computed(() => {
           @keydown.enter.prevent="onEnter"
           @keydown.esc.prevent="onEscape"
         />
+        <span class="search-glyph"><Icon name="search" :size="18" /></span>
       </div>
       <button class="nearby-btn" type="button" @click="emit('nearby')">
         <Icon name="pin" :size="17" />
