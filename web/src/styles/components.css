@@ -433,11 +433,11 @@
   transition: height 0.24s var(--ease), border-radius 0.24s var(--ease);
 }
 
-/* 卡片容器只是焦点落点，不应画全局 focus 轮廓，也不能被全局规则改掉圆角 */
+/* 卡片容器只是焦点落点，不应画全局 focus 轮廓；圆角始终交给卡片自己的规则，
+   否则 desktop 的焦点切换（点按钮）会让底部圆角在不同规则之间跳变 */
 .sheet-panel:focus,
 .sheet-panel:focus-visible {
   outline: none;
-  border-radius: var(--sheet-top-radius, var(--sheet-radius)) var(--sheet-top-radius, var(--sheet-radius)) 0 0;
 }
 
 @keyframes sheet-up {
