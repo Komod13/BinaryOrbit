@@ -35,6 +35,8 @@ const filter = ref<FilterKind>(readStorage<FilterKind>(STORAGE_KEYS.filter, 'all
 const drawer = ref<DrawerState>({ mode: 'none' });
 const radius = ref(1000);
 const center = ref<{ lng: number; lat: number } | null>(null);
+// 搜索里点中的地点：让地图移过去，并用图钉标出来
+const picked = ref<{ lng: number; lat: number; name: string } | null>(null);
 // 搜索范围：auto 时按「地图中心所在城市 + 当前缩放」判断，避免把上一个城市的名字带过来
 const scopeMode = ref<'auto' | 'city' | 'nation'>('auto');
 const city = ref<{ name: string; adcode: string | null } | null>(null);
@@ -182,7 +184,16 @@ async function probeCity(force = false): Promise<void> {
 }
 
 function openDetail(placeId: number): void {
+  picked.value = null;
   drawer.value = { mode: 'detail', placeId };
+}
+
+/** 从顶部搜索建议里点已记录的地点：先打开详情，再把地图拢到它身上 */
+function onPlaceFromSearch(placeId: number): void {
+  const place = places.value.find((item) => item.id === placeId);
+  openDetail(placeId);
+  // 已记录的地点自带标记，不再叠一层选中图钉
+  if (place) mapRef.value?.focusOn({ lng: place.lng, lat: place.lat });
 }
 
 function onSearchPick(poi: PoiResult): void {
@@ -190,15 +201,20 @@ function onSearchPick(poi: PoiResult): void {
     const existing = places.value.find((place) => place.id === poi.existingPlaceId);
     if (existing) {
       drawer.value = { mode: 'form-visit', place: existing };
+      mapRef.value?.focusOn({ lng: existing.lng, lat: existing.lat });
       return;
     }
     openDetail(poi.existingPlaceId);
+    mapRef.value?.focusOn({ lng: poi.lng, lat: poi.lat });
     return;
   }
+  // 还没记录过的店：地图平移过去，用红色图钉标出来（由 AMapCanvas 根据 picked 渲染）
+  picked.value = { lng: poi.lng, lat: poi.lat, name: poi.name };
   drawer.value = { mode: 'form-new', poi, presetName: '' };
 }
 
 function onManualAdd(name: string): void {
+  picked.value = null;
   drawer.value = { mode: 'form-new', poi: null, presetName: name };
 }
 
@@ -209,6 +225,7 @@ watch(dockPanelOpen, async () => {
 });
 
 function closeDrawer(): void {
+  picked.value = null;
   drawer.value = { mode: 'none' };
 }
 
@@ -314,6 +331,7 @@ const showEmptyHint = computed(
       :filter="filter"
       :highlight-adcodes="highlight"
       :radius="searchRadius"
+      :picked="picked"
       @marker-click="openDetail"
       @view-change="onViewChange"
     />
@@ -333,7 +351,7 @@ const showEmptyHint = computed(
       :resolving-city="resolvingCity"
       @update:filter="filter = $event"
       @update:scope-mode="scopeMode = $event"
-      @open-place="openDetail"
+      @open-place="onPlaceFromSearch"
       @open-poi="onSearchPick"
       @manual="onManualAdd"
       @nearby="

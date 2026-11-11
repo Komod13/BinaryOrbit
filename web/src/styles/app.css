@@ -178,11 +178,25 @@ select {
   /* 与原型一致：紧贴搜索框下方，右端与 chips 同一行 */
   top: calc(10px + var(--search-h) + var(--dock-gap) + env(safe-area-inset-top));
   right: 12px;
+  /* 撑到页面底部，让下面的列表能用 flex 收缩，永远不越出视口 */
+  bottom: calc(84px + env(safe-area-inset-bottom));
   /* 高于顶部搜索/筛选浮层（z-index 30），否则地图页的「x 处足迹」会被它挡住点不到 */
   z-index: 36;
-  display: grid;
-  justify-items: end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 8px;
+  /* 容器占满右侧一条，但只有卡片和浮窗本身接收点击 */
+  pointer-events: none;
+}
+
+.stats > * {
+  pointer-events: auto;
+}
+
+.stats-toggle,
+.stats-card {
+  flex: none;
 }
 
 .stats-toggle {
@@ -235,8 +249,231 @@ select {
   text-align: center;
 }
 
+/* 餐厅 / 景点两格可点开列表；城市保持只读。
+   悬停和点击都不做高亮，PC 只用光标提示可点 */
+.stat--action {
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.stat--action:not(:disabled) {
+  cursor: pointer;
+}
+
+.stat--action:disabled {
+  cursor: default;
+}
+
 .stat + .stat {
   border-left: 1px solid var(--line-soft);
+}
+
+/* ---------- 餐厅 / 景点列表浮窗 ---------- */
+
+.stats-list {
+  display: flex;
+  flex-direction: column;
+  /* 跟着父容器一起收缩，内容再多也不会把页面顶出去 */
+  flex: 0 1 auto;
+  min-height: 0;
+  width: min(340px, calc(100vw - 24px));
+  padding: 12px 12px 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  animation: stats-list-in 0.18s var(--ease);
+}
+
+.stats-list-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.stats-list-panel--card {
+  flex: 1 1 auto;
+}
+
+/* 手机端把手 / 标题区沿用「添加新地点」抽屉的拖拽热区 */
+.stats-list-panel--sheet {
+  display: block;
+  padding-bottom: 2px;
+}
+
+.stats-sheet {
+  /* 内容少时也先占半屏，上拉全屏的手感和录入表单一致 */
+  min-height: 44vh;
+}
+
+.stats-list-head,
+.stats-search {
+  flex: none;
+}
+
+.stats-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stats-list-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.stats-list-title {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.stats-list-count {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.stats-list-close {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+
+.stats-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  margin-top: 9px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink-3);
+}
+
+.stats-search:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid rgba(var(--accent-rgb), 0.35);
+  outline-offset: 0;
+}
+
+.stats-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.stats-search input:focus {
+  outline: none;
+}
+
+.stats-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.stats-list-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 8px -4px 0;
+  padding: 0 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
+/* 手机端让整张抽屉滚动，列表本身不再套一层滚动 */
+.stats-list-panel--sheet .stats-list-body {
+  flex: none;
+  overflow: visible;
+}
+
+.stats-place {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 6px;
+}
+
+.stats-place + .stats-place {
+  border-top: 1px solid var(--line-soft);
+}
+
+.stats-place-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--rest);
+  box-shadow: 0 0 0 2px var(--rest-soft);
+}
+
+.stats-place-dot--spot {
+  background: var(--spot);
+  box-shadow: 0 0 0 2px var(--spot-soft);
+}
+
+.stats-place-main {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.stats-place-name,
+.stats-place-meta {
+  overflow: hidden;
+}
+
+.stats-place-name {
+  font-size: 13.5px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 地址一行放不下就换行，最多两行 */
+.stats-place-meta {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.stats-list-empty {
+  padding: 16px 8px 20px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+@keyframes stats-list-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .stat-num {
@@ -267,6 +504,7 @@ select {
   .stats {
     top: 24px;
     right: 24px;
+    bottom: calc(96px + env(safe-area-inset-bottom));
   }
 
   .stats-toggle {

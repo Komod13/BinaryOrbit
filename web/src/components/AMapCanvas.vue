@@ -7,6 +7,7 @@ import { shortName } from '../lib/format.ts';
 import type { AppConfig, FilterKind, MapApi, MapViewport, Place } from '../lib/types.ts';
 import burgerIcon from '../assets/icons/burger.png';
 import cameraIcon from '../assets/icons/camera.png';
+import pinIcon from '../assets/icons/pin.png';
 
 const props = withDefaults(
   defineProps<{
@@ -16,8 +17,10 @@ const props = withDefaults(
     filter: FilterKind;
     highlightAdcodes?: string[];
     radius?: number | null;
+    /** 搜索中选中的地点：地图会平移过去，并用图钉标出来 */
+    picked?: { lng: number; lat: number; name: string } | null;
   }>(),
-  { highlightAdcodes: () => [], radius: null },
+  { highlightAdcodes: () => [], radius: null, picked: null },
 );
 
 const emit = defineEmits<{
@@ -34,6 +37,8 @@ const zoom = ref(props.initialView.zoom);
 const map = shallowRef<any>(null);
 let AMap: any = null;
 let circle: any = null;
+let pickMarker: any = null;
+let pickElement: HTMLDivElement | null = null;
 let clusterTimer: ReturnType<typeof setTimeout> | null = null;
 // 手势进行中不做聚合重建：iOS/WKWebView 上删除+重建几十个 DOM 标记会直接卡住一帧以上
 let interacting = false;
@@ -244,6 +249,48 @@ function syncCircle(): void {
   }
 }
 
+/** 选中地点的图钉：和聚合标记分开管理，不受筛选/聚合影响。 */
+function syncPick(): void {
+  const instance = map.value;
+  if (!instance || !AMap) return;
+
+  const target = props.picked;
+  if (!target) {
+    if (pickMarker) {
+      instance.remove(pickMarker);
+      pickMarker = null;
+      pickElement = null;
+    }
+    return;
+  }
+
+  if (!pickMarker || !pickElement) {
+    const element = document.createElement('div');
+    element.className = 'pick-pin';
+    element.innerHTML =
+      '<span class="pick-pin-label"></span><img class="pick-pin-img" alt="" aria-hidden="true" />';
+    const image = element.querySelector<HTMLImageElement>('.pick-pin-img');
+    if (image) image.src = pinIcon;
+    pickElement = element;
+    pickMarker = new AMap.Marker({
+      content: element,
+      anchor: 'bottom-center',
+      zIndex: 200,
+      clickable: false,
+    });
+    instance.add(pickMarker);
+  }
+
+  const label = pickElement.querySelector('.pick-pin-label');
+  if (label && label.textContent !== target.name) label.textContent = target.name;
+  pickMarker.setPosition([target.lng, target.lat]);
+  pickMarker.show();
+
+  // 平移 + 拉到街道级；已经比 16 更近时保持用户当前的缩放
+  const level = Math.max(instance.getZoom?.() ?? props.initialView.zoom, 16);
+  instance.setZoomAndCenter(level, [target.lng, target.lat], false, 300);
+}
+
 function emitView(): void {
   const instance = map.value;
   if (!instance) return;
@@ -339,6 +386,7 @@ onMounted(async () => {
     rebuildMarkers();
     syncLabels();
     syncCircle();
+    syncPick();
     emitView();
     // 高德在移动 UA 下走 WebGL 画布，桌面 UA 下走栅格瓦片（见 diag 面板 / components.css）
     diagState.renderer = host.value?.querySelector('canvas.amap-layer') ? 'webgl' : 'raster';
@@ -384,10 +432,13 @@ onMounted(async () => {
 
 watch(() => [props.places, props.filter, props.highlightAdcodes], () => scheduleRebuild(), { deep: false });
 watch(() => props.radius, () => syncCircle());
+watch(() => props.picked, () => syncPick());
 
 onBeforeUnmount(() => {
   clearMarkers();
   if (clusterTimer) clearTimeout(clusterTimer);
+  pickMarker = null;
+  pickElement = null;
   map.value?.destroy?.();
   map.value = null;
 });
@@ -395,6 +446,13 @@ onBeforeUnmount(() => {
 defineExpose<MapApi>({
   setView(center, level) {
     map.value?.setZoomAndCenter(level ?? 13, [center.lng, center.lat]);
+  },
+  focusOn(center, level = 16) {
+    const instance = map.value;
+    if (!instance) return;
+    // 已比目标更近时保持用户当前的缩放，只平移
+    const next = Math.max(level, instance.getZoom?.() ?? level);
+    instance.setZoomAndCenter(next, [center.lng, center.lat], false, 300);
   },
   fitTo(places) {
     if (!map.value || !AMap || !places.length) return;
