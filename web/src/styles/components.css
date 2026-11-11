@@ -1235,6 +1235,8 @@ textarea:focus {
 
   /* PC 端录入表单：压紧间距、两个按钮并排，一屏就能看到「取消」，不用拖滚动条 */
   .dock-panel--form {
+    /* 高度压紧之后同步收窄到 520 × 0.8，表单不至于横着空一大截 */
+    width: 416px;
     padding: 12px 18px;
     /* 比搜索面板多占一点高度（底部只留 12px），矮窗口也尽量一屏放下 */
     max-height: calc(100vh - 140px);
@@ -1313,6 +1315,14 @@ textarea:focus {
   .dock-panel--form .star {
     width: 28px;
     height: 28px;
+  }
+
+  /* 日期框 32px 高，星级行拉成同高并居中，两个输入在一条水平线上。
+     fieldset 里的 legend 不参与网格间距，补 4px 把星级行压回和日期框同一行 */
+  .dock-panel--form .field-pair .star-row {
+    height: 32px;
+    margin-top: 4px;
+    align-items: center;
   }
 
   .dock-panel--form .sheet-actions {
