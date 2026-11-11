@@ -231,10 +231,11 @@
   height: 38px;
 }
 
+/* 浮窗放在选点右侧，和图钉并排：既不挡住图钉，也不用往上顶出一大截 */
 .draft-menu {
   position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
+  top: 50%;
+  left: calc(100% + 8px);
   display: grid;
   gap: 2px;
   padding: 4px;
@@ -242,10 +243,16 @@
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.98);
   box-shadow: var(--shadow-md);
-  transform: translateX(-50%);
+  transform: translateY(-50%);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   animation: draft-menu-in 0.16s var(--ease);
+}
+
+/* 选点太靠右时翻到图钉左侧，免得菜单被地图边缘切掉 */
+.draft.is-flipped .draft-menu {
+  left: auto;
+  right: calc(100% + 8px);
 }
 
 /* 点了某一类之后只留图钉，填表期间还能看到选的是哪个点 */

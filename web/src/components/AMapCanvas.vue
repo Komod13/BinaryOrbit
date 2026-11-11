@@ -391,7 +391,8 @@ function showDraftMenu(clientX: number, clientY: number): void {
   const instance = map.value;
   if (!instance || !AMap || !host.value) return;
   const rect = host.value.getBoundingClientRect();
-  const point = instance.containerToLngLat(new AMap.Pixel(clientX - rect.left, clientY - rect.top));
+  const pixel = new AMap.Pixel(clientX - rect.left, clientY - rect.top);
+  const point = instance.containerToLngLat(pixel);
   if (!point) return;
   draftPoint = { lng: point.getLng(), lat: point.getLat() };
   if (!draftMarker || !draftElement) {
@@ -402,9 +403,18 @@ function showDraftMenu(clientX: number, clientY: number): void {
   draftElement.classList.remove('is-choosing');
   draftMarker.setPosition([draftPoint.lng, draftPoint.lat]);
   draftMarker.show();
+  positionDraftMenu(pixel.x, rect.width);
   suppressMapClick = true;
   // 平板 / 手机上给一点触觉反馈，不支持就算了
   navigator.vibrate?.(12);
+}
+
+/** 菜单默认在选点右侧；靠右边缘放不下时翻到图钉左侧 */
+function positionDraftMenu(pointX: number, containerWidth: number): void {
+  const menu = draftElement?.querySelector<HTMLElement>('.draft-menu');
+  const width = menu?.offsetWidth ?? 0;
+  const fitsRight = width > 0 && pointX + 8 + width + 12 <= containerWidth;
+  draftElement?.classList.toggle('is-flipped', width > 0 && !fitsRight);
 }
 
 function clearDraft(): void {
