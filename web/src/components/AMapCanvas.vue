@@ -11,7 +11,7 @@ import {
   forcesSpread,
   spreadOffsets,
 } from '../lib/markerLayout.ts';
-import type { AppConfig, FilterKind, MapApi, MapViewport, Place } from '../lib/types.ts';
+import type { AppConfig, FilterKind, MapApi, MapViewport, Place, PlaceType } from '../lib/types.ts';
 import burgerIcon from '../assets/icons/burger.png';
 import cameraIcon from '../assets/icons/camera.png';
 import pinIcon from '../assets/icons/pin.png';
@@ -33,6 +33,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   markerClick: [id: number];
   viewChange: [view: MapViewport];
+  /** 长按地图选了「添加餐厅 / 添加景点」 */
+  draftAdd: [payload: { kind: PlaceType; lng: number; lat: number }];
 }>();
 
 const host = ref<HTMLDivElement | null>(null);
@@ -50,6 +52,22 @@ let clusterTimer: ReturnType<typeof setTimeout> | null = null;
 // 手势进行中不做聚合重建：iOS/WKWebView 上删除+重建几十个 DOM 标记会直接卡住一帧以上
 let interacting = false;
 let pendingRebuild = false;
+
+/** 长按：按住不动 520ms 算选点，手指 / 鼠标挪超过 8px 就当作在拖地图 */
+const LONG_PRESS_MS = 520;
+const LONG_PRESS_TOLERANCE = 8;
+
+let draftMarker: any = null;
+let draftElement: HTMLDivElement | null = null;
+let draftPoint: { lng: number; lat: number } | null = null;
+// 长按抬手（或点选项）后高德还会补一个 click，用这个标记把那个 click 忽略掉
+let suppressMapClick = false;
+// 程序化平移（例如手机上表单占掉半屏后把选点挪回可见区域）也会触发 movestart，
+// 这段时间内不清选点浮窗，否则刚选的图钉会被自己挪没
+const PROGRAMMATIC_MOVE_GRACE = 600;
+let draftMoveGraceUntil = 0;
+let pressTimer: ReturnType<typeof setTimeout> | null = null;
+let pressOrigin: { x: number; y: number } | null = null;
 
 interface MarkerGroup {
   places: Place[];
@@ -338,6 +356,105 @@ function emitView(): void {
 }
 
 /**
+ * 长按选点：在该点放一个红图钉 + 小浮窗（添加餐厅 / 添加景点）。
+ *
+ * 高德 2.0 的 Map 事件里没有 longpress（只有 Overlay 有），所以自己在容器上听 pointer 事件：
+ * 按住不动 520ms 算选点，挪动超过 8px 或松手就当作在拖地图。
+ */
+function createDraftElement(): HTMLDivElement {
+  const element = document.createElement('div');
+  element.className = 'draft';
+  element.innerHTML =
+    '<div class="draft-menu">' +
+    '<button class="draft-option draft-option--restaurant" type="button" data-kind="restaurant">' +
+    '<span class="draft-dot"></span>添加餐厅</button>' +
+    '<button class="draft-option draft-option--spot" type="button" data-kind="spot">' +
+    '<span class="draft-dot"></span>添加景点</button>' +
+    '</div>' +
+    '<img class="draft-pin" alt="" aria-hidden="true" />';
+  const image = element.querySelector<HTMLImageElement>('.draft-pin');
+  if (image) image.src = pinIcon;
+  element.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('.draft-option');
+    if (!button || !draftPoint) return;
+    const kind: PlaceType = button.dataset.kind === 'spot' ? 'spot' : 'restaurant';
+    // 收起菜单但保留图钉：填表期间还能看到自己选的是哪个点
+    element.classList.add('is-choosing');
+    suppressMapClick = true;
+    emit('draftAdd', { kind, lng: draftPoint.lng, lat: draftPoint.lat });
+  });
+  return element;
+}
+
+function showDraftMenu(clientX: number, clientY: number): void {
+  const instance = map.value;
+  if (!instance || !AMap || !host.value) return;
+  const rect = host.value.getBoundingClientRect();
+  const point = instance.containerToLngLat(new AMap.Pixel(clientX - rect.left, clientY - rect.top));
+  if (!point) return;
+  draftPoint = { lng: point.getLng(), lat: point.getLat() };
+  if (!draftMarker || !draftElement) {
+    draftElement = createDraftElement();
+    draftMarker = new AMap.Marker({ content: draftElement, anchor: 'bottom-center', zIndex: 220 });
+    instance.add(draftMarker);
+  }
+  draftElement.classList.remove('is-choosing');
+  draftMarker.setPosition([draftPoint.lng, draftPoint.lat]);
+  draftMarker.show();
+  suppressMapClick = true;
+  // 平板 / 手机上给一点触觉反馈，不支持就算了
+  navigator.vibrate?.(12);
+}
+
+function clearDraft(): void {
+  cancelPress();
+  draftPoint = null;
+  draftElement?.classList.remove('is-choosing');
+  draftMarker?.hide();
+}
+
+function cancelPress(): void {
+  if (pressTimer) {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+  }
+  pressOrigin = null;
+}
+
+/** 按在图钉 / 浮窗 / 聚合气泡上时不触发长按选点 */
+function pressOnOverlay(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  return Boolean(element?.closest?.('.pin-marker, .pin-cluster, .pick-pin, .draft'));
+}
+
+function onHostPointerDown(event: PointerEvent): void {
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
+  // 新的一次按下：之后那个 click 该算数（用来关掉浮窗）
+  suppressMapClick = false;
+  if (pressOnOverlay(event.target)) return;
+  cancelPress();
+  pressOrigin = { x: event.clientX, y: event.clientY };
+  pressTimer = setTimeout(() => {
+    pressTimer = null;
+    const origin = pressOrigin;
+    pressOrigin = null;
+    if (origin) showDraftMenu(origin.x, origin.y);
+  }, LONG_PRESS_MS);
+}
+
+function onHostPointerMove(event: PointerEvent): void {
+  if (!pressOrigin) return;
+  const moved = Math.hypot(event.clientX - pressOrigin.x, event.clientY - pressOrigin.y);
+  if (moved > LONG_PRESS_TOLERANCE) cancelPress();
+}
+
+function onHostContextMenu(event: MouseEvent): void {
+  // 长按 / 右键刚弹出选点浮窗时，不要叠上浏览器自己的菜单
+  if (draftPoint || pressTimer) event.preventDefault();
+}
+
+/**
  * 底图注记的运行时开关。
  *
  * 为什么不用构造参数：`showLabel` 只能在 `new AMap.Map` 时给，而我们需要「低 zoom 留城市名、
@@ -449,9 +566,19 @@ onMounted(async () => {
   });
   instance.on('movestart', () => {
     interacting = true;
+    if (performance.now() > draftMoveGraceUntil) clearDraft();
   });
   instance.on('zoomstart', () => {
     interacting = true;
+    if (performance.now() > draftMoveGraceUntil) clearDraft();
+  });
+  instance.on('click', () => {
+    // 长按抬手 / 点选项之后紧跟着的 click 不算「点了空白处」
+    if (suppressMapClick) {
+      suppressMapClick = false;
+      return;
+    }
+    clearDraft();
   });
   instance.on('zoomend', () => {
     syncLabels();
@@ -467,6 +594,15 @@ onMounted(async () => {
     endInteraction();
     scheduleRebuild();
   });
+
+  // 长按选点：高德 Map 没有 longpress，自己在容器上计时
+  const hostNode = host.value;
+  hostNode.addEventListener('pointerdown', onHostPointerDown);
+  hostNode.addEventListener('pointermove', onHostPointerMove);
+  hostNode.addEventListener('pointerup', cancelPress);
+  hostNode.addEventListener('pointercancel', cancelPress);
+  hostNode.addEventListener('pointerleave', cancelPress);
+  hostNode.addEventListener('contextmenu', onHostContextMenu);
 });
 
 watch(() => [props.places, props.filter, props.highlightAdcodes], () => scheduleRebuild(), { deep: false });
@@ -476,8 +612,18 @@ watch(() => props.picked, () => syncPick());
 onBeforeUnmount(() => {
   clearMarkers();
   if (clusterTimer) clearTimeout(clusterTimer);
+  cancelPress();
+  const hostNode = host.value;
+  hostNode?.removeEventListener('pointerdown', onHostPointerDown);
+  hostNode?.removeEventListener('pointermove', onHostPointerMove);
+  hostNode?.removeEventListener('pointerup', cancelPress);
+  hostNode?.removeEventListener('pointercancel', cancelPress);
+  hostNode?.removeEventListener('pointerleave', cancelPress);
+  hostNode?.removeEventListener('contextmenu', onHostContextMenu);
   pickMarker = null;
   pickElement = null;
+  draftMarker = null;
+  draftElement = null;
   map.value?.destroy?.();
   map.value = null;
 });
@@ -495,7 +641,11 @@ defineExpose<MapApi>({
   },
   panTo(center) {
     // 只平移不动缩放：统计列表里挑一条时看的是「它在哪」，保持当前视野尺度
+    draftMoveGraceUntil = performance.now() + PROGRAMMATIC_MOVE_GRACE;
     map.value?.panTo([center.lng, center.lat], 320);
+  },
+  clearDraft() {
+    clearDraft();
   },
   fitTo(places) {
     if (!map.value || !AMap || !places.length) return;

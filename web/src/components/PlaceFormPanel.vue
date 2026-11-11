@@ -6,12 +6,14 @@ import StarRating from './StarRating.vue';
 import { addVisit, createPlace, fetchRegeo, qk } from '../lib/queries.ts';
 import { TIER_LABEL, TYPE_LABEL, categoryLabel, distanceMeters, tierHint, todayISO } from '../lib/format.ts';
 import { toast, toastError } from '../lib/toast.ts';
-import type { Place, PlaceType, PoiResult, PriceTier } from '../lib/types.ts';
+import type { DraftPoint, Place, PlaceType, PoiResult, PriceTier } from '../lib/types.ts';
 
 const props = defineProps<{
   tiers: { low: number; high: number };
   mode: 'new' | 'visit';
   poi?: PoiResult | null;
+  /** 长按地图选的点：没有 POI，但有坐标和反查回来的地址 */
+  draft?: DraftPoint | null;
   place?: Place | null;
   presetName?: string;
   center: { lng: number; lat: number };
@@ -26,7 +28,9 @@ const emit = defineEmits<{
 const queryClient = useQueryClient();
 
 const name = ref(props.poi?.name ?? props.place?.name ?? props.presetName ?? '');
-const type = ref<PlaceType>(props.poi?.type ?? props.place?.type ?? 'restaurant');
+const type = ref<PlaceType>(
+  props.draft?.kind ?? props.poi?.type ?? props.place?.type ?? 'restaurant',
+);
 const date = ref(todayISO());
 const rating = ref<number | null>(null);
 const tier = ref<PriceTier | null>(null);
@@ -40,15 +44,20 @@ const forceNew = ref(false);
 
 const isManual = computed(() => props.mode === 'new' && !props.poi);
 const showTier = computed(() => type.value === 'restaurant');
-const position = computed(() => ({
-  lng: props.poi?.lng ?? props.center.lng,
-  lat: props.poi?.lat ?? props.center.lat,
-}));
+const position = computed(() => {
+  if (props.draft) return { lng: props.draft.lng, lat: props.draft.lat };
+  return {
+    lng: props.poi?.lng ?? props.center.lng,
+    lat: props.poi?.lat ?? props.center.lat,
+  };
+});
 
 const title = computed(() => {
   if (props.mode === 'visit') return props.place?.name ?? '';
   // 搜索选中已有 POI：「新地点」标签已经标明状态，标题直接用选中的店名
   if (props.poi) return props.poi.name;
+  // 长按地图选点：没有店名可显示，标题就说清楚要添加哪一类
+  if (props.draft) return `添加${TYPE_LABEL[type.value]}`;
   return '手动记一个地点';
 });
 
@@ -56,6 +65,7 @@ const subtitle = computed(() => {
   if (props.mode === 'visit') return `已到访 ${props.place?.visitCount ?? 0} 次 · 这次只补一条到访记录`;
   if (props.poi)
     return `${categoryLabel(props.poi.category, TYPE_LABEL[props.poi.type])} · ${props.poi.address || '地图上的地点'}`;
+  if (props.draft) return props.draft.address || '地图上选的点';
   return '手动标记 · 地图中心附近';
 });
 
@@ -125,9 +135,9 @@ async function submit(): Promise<void> {
 
   submitting.value = true;
   try {
-    let cityName = props.poi?.cityName ?? null;
-    let cityAdcode = props.poi?.cityAdcode ?? null;
-    let district = props.poi?.district ?? null;
+    let cityName = props.draft?.cityName ?? props.poi?.cityName ?? null;
+    let cityAdcode = props.draft?.cityAdcode ?? props.poi?.cityAdcode ?? null;
+    let district = props.draft?.district ?? props.poi?.district ?? null;
     if (!cityAdcode) {
       try {
         const regeo = await fetchRegeo(position.value.lng, position.value.lat);
@@ -143,7 +153,7 @@ async function submit(): Promise<void> {
       type: type.value,
       name: name.value.trim(),
       externalId: props.poi?.id ?? null,
-      address: props.poi?.address ?? null,
+      address: props.draft?.address || props.poi?.address || null,
       lng: position.value.lng,
       lat: position.value.lat,
       category: props.poi?.category ?? null,

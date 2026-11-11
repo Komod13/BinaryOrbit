@@ -14,6 +14,10 @@
   position: absolute;
   inset: 0;
   background: var(--map-land);
+  /* 长按选点：别让浏览器在按住时弹系统菜单 / 选中文字 */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 /* 只给瓦片图层上滤镜：标记、标签、城市多边形都是独立图层，不受影响 */
@@ -215,6 +219,84 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* ---------- 长按地图的选点浮窗 ---------- */
+
+.draft {
+  /* 尺寸只由图钉决定：菜单绝对定位浮在上面，收起来不会改变高德的锚点偏移 */
+  position: relative;
+  width: 36px;
+  height: 38px;
+}
+
+.draft-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  display: grid;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--shadow-md);
+  transform: translateX(-50%);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  animation: draft-menu-in 0.16s var(--ease);
+}
+
+/* 点了某一类之后只留图钉，填表期间还能看到选的是哪个点 */
+.draft.is-choosing .draft-menu {
+  display: none;
+}
+
+.draft-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: var(--ink);
+  background: transparent;
+  transition: background 0.16s var(--ease);
+}
+
+.draft-option:hover {
+  background: var(--paper-soft);
+}
+
+.draft-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--rest);
+}
+
+.draft-option--spot .draft-dot {
+  background: var(--spot);
+}
+
+.draft-pin {
+  position: absolute;
+  inset: 0;
+  width: 36px;
+  height: 38px;
+  object-fit: contain;
+  filter: drop-shadow(0 5px 10px rgba(28, 30, 28, 0.28));
+}
+
+@keyframes draft-menu-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

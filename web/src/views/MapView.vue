@@ -14,7 +14,7 @@ import { CHINA_VIEW, viewportFromIp } from '../lib/amap.ts';
 import { STORAGE_KEYS, readStorage, writeStorage } from '../lib/storage.ts';
 import { consumeMapFocus, mapFocusRequest } from '../lib/mapFocus.ts';
 import { toastError } from '../lib/toast.ts';
-import type { AppConfig, FilterKind, MapViewport, Place, PoiResult } from '../lib/types.ts';
+import type { AppConfig, DraftPoint, FilterKind, MapViewport, Place, PlaceType, PoiResult } from '../lib/types.ts';
 
 defineOptions({ name: 'MapView' });
 
@@ -38,6 +38,8 @@ const radius = ref(1000);
 const center = ref<{ lng: number; lat: number } | null>(null);
 // 搜索里点中的地点：让地图移过去，并用图钉标出来
 const picked = ref<{ lng: number; lat: number; name: string } | null>(null);
+// 长按地图选的点：打开录入表单时带上坐标与反查地址
+const draft = ref<DraftPoint | null>(null);
 // 搜索范围：auto 时按「地图中心所在城市 + 当前缩放」判断，避免把上一个城市的名字带过来
 const scopeMode = ref<'auto' | 'city' | 'nation'>('auto');
 const city = ref<{ name: string; adcode: string | null } | null>(null);
@@ -68,6 +70,16 @@ const dockPanelOpen = computed(
     drawer.value.mode === 'form-new' ||
     drawer.value.mode === 'form-visit',
 );
+
+/** 录入表单按「这次选中的是谁」重建，换了选点就不沿用上一个表单里填的东西 */
+const formKey = computed(() => {
+  if (drawer.value.mode === 'form-visit') return `visit:${drawer.value.place.id}`;
+  if (drawer.value.mode === 'form-new') {
+    if (draft.value) return `draft:${draft.value.kind}:${draft.value.lng}:${draft.value.lat}`;
+    if (drawer.value.poi) return `poi:${drawer.value.poi.id}`;
+  }
+  return 'new:manual';
+});
 const sheetOpen = computed(() => drawer.value.mode === 'detail');
 const searchRadius = computed(() => (drawer.value.mode === 'search' ? radius.value : null));
 
@@ -186,7 +198,45 @@ async function probeCity(force = false): Promise<void> {
 
 function openDetail(placeId: number): void {
   picked.value = null;
+  resetDraft();
   drawer.value = { mode: 'detail', placeId };
+}
+
+/** 清掉长按选点的状态：地图上的图钉 + 表单预填数据 */
+function resetDraft(): void {
+  draft.value = null;
+  mapRef.value?.clearDraft();
+}
+
+/**
+ * 长按地图选了「添加餐厅 / 添加景点」：立即开表单，地址用反查地址异步补上。
+ */
+async function onDraftAdd(payload: { kind: PlaceType; lng: number; lat: number }): Promise<void> {
+  picked.value = null;
+  const base: DraftPoint = {
+    ...payload,
+    address: '',
+    cityName: '',
+    cityAdcode: null,
+    district: null,
+  };
+  draft.value = base;
+  drawer.value = { mode: 'form-new', poi: null, presetName: '' };
+  try {
+    const regeo = await fetchRegeo(payload.lng, payload.lat);
+    // 反查期间用户可能已经换了个点 / 关了表单（Vue 的 ref 会包一层代理，不能按对象比）
+    const current = draft.value;
+    if (!current || current.lng !== base.lng || current.lat !== base.lat) return;
+    draft.value = {
+      ...current,
+      address: regeo.address,
+      cityName: regeo.cityName,
+      cityAdcode: regeo.cityAdcode,
+      district: regeo.district,
+    };
+  } catch {
+    /* 地址补全失败不阻塞录入，保存时还会再试一次 */
+  }
 }
 
 /** 从顶部搜索建议里点已记录的地点：先打开详情，再把地图拢到它身上 */
@@ -198,6 +248,7 @@ function onPlaceFromSearch(placeId: number): void {
 }
 
 function onSearchPick(poi: PoiResult): void {
+  resetDraft();
   if (poi.existingPlaceId) {
     const existing = places.value.find((place) => place.id === poi.existingPlaceId);
     if (existing) {
@@ -216,17 +267,25 @@ function onSearchPick(poi: PoiResult): void {
 
 function onManualAdd(name: string): void {
   picked.value = null;
+  resetDraft();
   drawer.value = { mode: 'form-new', poi: null, presetName: name };
 }
 
 // 移动端浮窗打开时把地图容器缩到浮窗上方，让准星与半径圈保持可见
 watch(dockPanelOpen, async () => {
   await nextTick();
-  setTimeout(() => mapRef.value?.resize(), 260);
+  setTimeout(() => {
+    mapRef.value?.resize();
+    // 手机上表单占了下半屏：把长按选的点平移回可见区域，别被浮窗盖住
+    if (draft.value && window.matchMedia('(max-width: 859px)').matches) {
+      mapRef.value?.panTo({ lng: draft.value.lng, lat: draft.value.lat });
+    }
+  }, 260);
 });
 
 function closeDrawer(): void {
   picked.value = null;
+  resetDraft();
   drawer.value = { mode: 'none' };
 }
 
@@ -342,6 +401,7 @@ const showEmptyHint = computed(
       :picked="picked"
       @marker-click="openDetail"
       @view-change="onViewChange"
+      @draft-add="onDraftAdd"
     />
     <div v-else-if="!config" class="map-placeholder">正在准备地图…</div>
 
@@ -386,9 +446,11 @@ const showEmptyHint = computed(
 
     <DockSheet v-if="drawer.mode === 'form-new' || drawer.mode === 'form-visit'">
       <PlaceFormPanel
+        :key="formKey"
         :tiers="config?.priceTiers ?? { low: 60, high: 150 }"
         :mode="drawer.mode === 'form-new' ? 'new' : 'visit'"
         :poi="drawer.mode === 'form-new' ? drawer.poi : null"
+        :draft="drawer.mode === 'form-new' ? draft : null"
         :place="drawer.mode === 'form-visit' ? drawer.place : null"
         :preset-name="drawer.mode === 'form-new' ? drawer.presetName : ''"
         :center="center ?? { lng: CHINA_VIEW.lng, lat: CHINA_VIEW.lat }"

@@ -136,12 +136,25 @@ export interface CreatePlaceResponse {
   deduped: boolean;
 }
 
+/** 长按地图选出来的待录入点：坐标先到，地址 / 城市由反查地址回填 */
+export interface DraftPoint {
+  kind: PlaceType;
+  lng: number;
+  lat: number;
+  address: string;
+  cityName: string;
+  cityAdcode: string | null;
+  district: string | null;
+}
+
 export interface MapApi {
   setView(center: { lng: number; lat: number }, level?: number): void;
   /** 平移并拉近到指定坐标，用于搜索选中已记录的地点 */
   focusOn(center: { lng: number; lat: number }, level?: number): void;
   /** 只平移地图中心、不改缩放，用于统计列表里选中一条记录 */
   panTo(center: { lng: number; lat: number }): void;
+  /** 关掉长按地图弹出的选点图钉与浮窗 */
+  clearDraft(): void;
   fitTo(places: Place[]): void;
   getCenter(): { lng: number; lat: number } | null;
   getZoom(): number;
