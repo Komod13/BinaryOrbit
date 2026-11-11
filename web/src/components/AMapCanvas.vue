@@ -4,6 +4,13 @@ import { isTouchEnvironment, loadAMap, resolveLabels } from '../lib/amap.ts';
 import type { LabelSettings } from '../lib/amap.ts';
 import { diagState } from '../lib/diag.ts';
 import { shortName } from '../lib/format.ts';
+import {
+  CLUSTER_GRID,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  forcesSpread,
+  spreadOffsets,
+} from '../lib/markerLayout.ts';
 import type { AppConfig, FilterKind, MapApi, MapViewport, Place } from '../lib/types.ts';
 import burgerIcon from '../assets/icons/burger.png';
 import cameraIcon from '../assets/icons/camera.png';
@@ -44,6 +51,13 @@ let clusterTimer: ReturnType<typeof setTimeout> | null = null;
 let interacting = false;
 let pendingRebuild = false;
 
+interface MarkerGroup {
+  places: Place[];
+  /** 高 zoom 下的像素错开量：只挪显示位置，经纬度仍用真实坐标 */
+  dx: number;
+  dy: number;
+}
+
 interface MarkerSlot {
   marker: any;
   kind: 'pin' | 'cluster';
@@ -51,9 +65,6 @@ interface MarkerSlot {
 }
 
 let slots: MarkerSlot[] = [];
-
-const GRID = 60;
-const MAX_CLUSTER_ZOOM = 16;
 
 const visiblePlaces = computed(() =>
   props.filter === 'all' ? props.places : props.places.filter((place) => place.type === props.filter),
@@ -66,19 +77,44 @@ function clearMarkers(): void {
   slots = [];
 }
 
-function clusterPoints(): { x: number; y: number; places: Place[] }[] {
+/**
+ * 切成「每组一个标记」：常规层级按像素网格聚合；到最大/次大层级强制一对一点位
+ * （同一个商场里的两家店也能分别点开，见 markerLayout.ts）。
+ */
+function clusterPoints(): MarkerGroup[] {
   const instance = map.value;
   if (!instance) return [];
-  const cells = new Map<string, { x: number; y: number; places: Place[] }>();
+  const currentZoom = instance.getZoom?.() ?? zoom.value;
+  if (forcesSpread(currentZoom)) return spreadGroups(instance);
+
+  const cells = new Map<string, MarkerGroup>();
   for (const place of visiblePlaces.value) {
     const pixel = instance.lngLatToContainer([place.lng, place.lat]);
     if (!pixel) continue;
-    const key = `${Math.floor(pixel.x / GRID)}:${Math.floor(pixel.y / GRID)}`;
+    const key = `${Math.floor(pixel.x / CLUSTER_GRID)}:${Math.floor(pixel.y / CLUSTER_GRID)}`;
     const cell = cells.get(key);
     if (cell) cell.places.push(place);
-    else cells.set(key, { x: pixel.x, y: pixel.y, places: [place] });
+    else cells.set(key, { places: [place], dx: 0, dy: 0 });
   }
   return [...cells.values()];
+}
+
+/** 强展示层级：先算像素位置，再把互相压住的图钉错开。 */
+function spreadGroups(instance: any): MarkerGroup[] {
+  const items: { place: Place; x: number; y: number }[] = [];
+  for (const place of visiblePlaces.value) {
+    const pixel = instance.lngLatToContainer([place.lng, place.lat]);
+    if (!pixel) continue;
+    items.push({ place, x: pixel.x, y: pixel.y });
+  }
+  // 按 id 排序：同一批点位的错开方向稳定，重建时不会左右横跳
+  items.sort((left, right) => left.place.id - right.place.id);
+  const offsets = spreadOffsets(items);
+  return items.map((item, index) => ({
+    places: [item.place],
+    dx: offsets[index].x,
+    dy: offsets[index].y,
+  }));
 }
 
 /** 标记 DOM 只建一次，之后只改内容/位置（避免每次重建都重新解码图标、重排 DOM）。 */
@@ -120,7 +156,8 @@ function createClusterElement(): HTMLDivElement {
     const places = (element as unknown as { __places?: Place[] }).__places;
     if (!places?.length) return;
     const current = map.value?.getZoom() ?? zoom.value;
-    const next = Math.min(MAX_CLUSTER_ZOOM, Math.max(current + 2, 14));
+    // 聚合成气泡时至少还要再进一级：16 → 18，直接跨进「强制单点」层级
+    const next = Math.min(MAX_ZOOM, Math.max(current + 2, 14));
     const lng = places.reduce((total, place) => total + place.lng, 0) / places.length;
     const lat = places.reduce((total, place) => total + place.lat, 0) / places.length;
     map.value?.setZoomAndCenter(next, [lng, lat]);
@@ -175,6 +212,8 @@ function rebuildMarkers(): void {
       const lat = group.places.reduce((total, place) => total + place.lat, 0) / group.places.length;
       slot.marker.setPosition([lng, lat]);
     }
+    // 错开只改显示位置：真实坐标不动，点开详情仍然对得上
+    slot.marker.setOffset(new AMap.Pixel(group.dx, group.dy));
     slot.marker.show();
     used++;
   }
@@ -374,7 +413,7 @@ onMounted(async () => {
     center: [props.initialView.lng, props.initialView.lat],
     viewMode: '2D',
     resizeEnable: true,
-    zooms: [3, 18],
+    zooms: [MIN_ZOOM, MAX_ZOOM],
     // `off` 时直接不画注记；`auto` 先画出来，之后再按 zoom 用图层开关隐藏（见 syncLabelsByZoom）
     showLabel: labelSettings.mode !== 'off',
   });
