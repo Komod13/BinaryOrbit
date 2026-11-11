@@ -251,12 +251,6 @@ select {
   text-align: center;
 }
 
-/* 标记页的统计栏按需求加宽 1.5 倍（手机端卡片原宽约 200px）；
-   桌面端的加宽写在下面的断点里。列表浮窗由 JS 跟随统计卡的实际宽度 */
-.stats[data-page='map'] .stats-card {
-  min-width: 300px;
-}
-
 /* 餐厅 / 景点两格可点开列表；城市保持只读。
    悬停和点击都不做高亮，PC 只用光标提示可点 */
 .stat--action {
@@ -533,8 +527,8 @@ select {
 
   .stats-card {
     display: flex;
-    /* 与左侧「搜索框 + 筛选行」等高（52 + 10 + 34 = 96），对齐原型 */
-    height: calc(var(--search-h) + var(--dock-gap) + var(--chip-h));
+    /* 与左侧搜索栏等高；手机端仍是内容自适应高度 */
+    height: var(--search-h);
     padding: 0 4px;
     border-radius: 16px;
   }
@@ -545,6 +539,12 @@ select {
   }
 
   .stats-card .stat {
+    /* 卡片变矮后内容竖向居中；手机端仍是原来的块级流 */
+    display: grid;
+    grid-auto-flow: column;
+    align-items: baseline;
+    justify-content: center;
+    align-content: center;
     padding: 0 18px;
   }
 
