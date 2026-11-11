@@ -493,6 +493,10 @@ defineExpose<MapApi>({
     const next = Math.max(level, instance.getZoom?.() ?? level);
     instance.setZoomAndCenter(next, [center.lng, center.lat], false, 300);
   },
+  panTo(center) {
+    // 只平移不动缩放：统计列表里挑一条时看的是「它在哪」，保持当前视野尺度
+    map.value?.panTo([center.lng, center.lat], 320);
+  },
   fitTo(places) {
     if (!map.value || !AMap || !places.length) return;
     const overlays = places.map((place) => new AMap.Marker({ position: [place.lng, place.lat] }));

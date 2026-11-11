@@ -8,7 +8,8 @@ import StatsListPanel from './StatsListPanel.vue';
 import { apiGet } from '../lib/api.ts';
 import { fetchPlaces, qk } from '../lib/queries.ts';
 import { STORAGE_KEYS, readStorage, writeStorage } from '../lib/storage.ts';
-import type { PlaceType, Stats } from '../lib/types.ts';
+import { requestMapFocus } from '../lib/mapFocus.ts';
+import type { Place, PlaceType, Stats } from '../lib/types.ts';
 
 const MOBILE_QUERY = '(max-width: 859px)';
 
@@ -86,6 +87,11 @@ function closeList(): void {
   listKind.value = null;
 }
 
+/** 列表里点一条记录：把地图中心平移过去（列表保持打开，方便连续看几家） */
+function onSelectPlace(place: Place): void {
+  requestMapFocus(place);
+}
+
 function onPointerDown(event: PointerEvent): void {
   if (!listKind.value) return;
   const target = event.target as HTMLElement | null;
@@ -134,7 +140,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section ref="root" class="stats" :data-open="open" aria-label="足迹统计">
+  <section ref="root" class="stats" :data-open="open" :data-page="route.name" aria-label="足迹统计">
     <button
       class="stats-toggle"
       type="button"
@@ -188,6 +194,7 @@ onBeforeUnmount(() => {
         :places="typePlaces"
         :loading="listLoading"
         variant="card"
+        @select="onSelectPlace"
         @close="closeList"
       />
     </div>
@@ -202,6 +209,7 @@ onBeforeUnmount(() => {
           :places="typePlaces"
           :loading="listLoading"
           variant="sheet"
+          @select="onSelectPlace"
           @close="closeList"
         />
       </div>

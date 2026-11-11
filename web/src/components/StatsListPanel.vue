@@ -13,7 +13,7 @@ const props = defineProps<{
   variant: 'card' | 'sheet';
 }>();
 
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; select: [place: Place] }>();
 
 const keyword = ref('');
 
@@ -53,14 +53,16 @@ const emptyLabel = computed(() => `还没有记录${TYPE_LABEL[props.kind]}，�
     </div>
 
     <ul class="stats-list-body">
-      <li v-for="place in filtered" :key="place.id" class="stats-place">
-        <span class="stats-place-dot" :class="`stats-place-dot--${place.type}`" aria-hidden="true" />
-        <span class="stats-place-main">
-          <span class="stats-place-name">{{ place.name }}</span>
-          <span class="stats-place-meta">
-            到访 {{ place.visitCount ?? 0 }} 次<template v-if="place.address"> · {{ place.address }}</template>
+      <li v-for="place in filtered" :key="place.id">
+        <button class="stats-place" type="button" @click="emit('select', place)">
+          <span class="stats-place-dot" :class="`stats-place-dot--${place.type}`" aria-hidden="true" />
+          <span class="stats-place-main">
+            <span class="stats-place-name">{{ place.name }}</span>
+            <span class="stats-place-meta">
+              到访 {{ place.visitCount ?? 0 }} 次<template v-if="place.address"> · {{ place.address }}</template>
+            </span>
           </span>
-        </span>
+        </button>
       </li>
 
       <li v-if="loading" class="stats-list-empty">正在读取…</li>

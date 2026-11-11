@@ -140,6 +140,8 @@ export interface MapApi {
   setView(center: { lng: number; lat: number }, level?: number): void;
   /** 平移并拉近到指定坐标，用于搜索选中已记录的地点 */
   focusOn(center: { lng: number; lat: number }, level?: number): void;
+  /** 只平移地图中心、不改缩放，用于统计列表里选中一条记录 */
+  panTo(center: { lng: number; lat: number }): void;
   fitTo(places: Place[]): void;
   getCenter(): { lng: number; lat: number } | null;
   getZoom(): number;

@@ -12,6 +12,7 @@ import PlaceFormPanel from '../components/PlaceFormPanel.vue';
 import { fetchConfig, fetchPlaces, fetchRegeo, qk } from '../lib/queries.ts';
 import { CHINA_VIEW, viewportFromIp } from '../lib/amap.ts';
 import { STORAGE_KEYS, readStorage, writeStorage } from '../lib/storage.ts';
+import { consumeMapFocus, mapFocusRequest } from '../lib/mapFocus.ts';
 import { toastError } from '../lib/toast.ts';
 import type { AppConfig, FilterKind, MapViewport, Place, PoiResult } from '../lib/types.ts';
 
@@ -246,6 +247,13 @@ watch(
     if (adcode && places.value.length) focusCity(adcode);
   },
 );
+
+// 统计列表里选中一条记录：只平移地图中心，缩放保持不变
+watch(mapFocusRequest, (request) => {
+  if (!request) return;
+  mapRef.value?.panTo({ lng: request.lng, lat: request.lat });
+  consumeMapFocus();
+});
 
 onMounted(async () => {
   try {

@@ -242,11 +242,19 @@ select {
 }
 
 .stat {
+  /* 三格平分卡片宽度（标记页加宽后，多出来的宽度变成留白） */
+  flex: 1 1 0;
   padding: 0 14px;
   gap: 4px;
   justify-items: center;
   align-content: center;
   text-align: center;
+}
+
+/* 标记页的统计栏按需求加宽 1.5 倍（手机端卡片原宽约 200px）；
+   桌面端的加宽写在下面的断点里。列表浮窗由 JS 跟随统计卡的实际宽度 */
+.stats[data-page='map'] .stats-card {
+  min-width: 300px;
 }
 
 /* 餐厅 / 景点两格可点开列表；城市保持只读。
@@ -406,10 +414,22 @@ select {
   display: flex;
   align-items: flex-start;
   gap: 9px;
+  width: 100%;
   padding: 8px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.16s var(--ease);
 }
 
-.stats-place + .stats-place {
+.stats-place:hover {
+  background: var(--paper-soft);
+}
+
+.stats-list-body > li + li {
   border-top: 1px solid var(--line-soft);
 }
 
@@ -517,6 +537,11 @@ select {
     height: calc(var(--search-h) + var(--dock-gap) + var(--chip-h));
     padding: 0 4px;
     border-radius: 16px;
+  }
+
+  /* 桌面端内容自适应宽度实测 237px，标记页按需求 ×1.5 ≈ 356px */
+  .stats[data-page='map'] .stats-card {
+    min-width: 356px;
   }
 
   .stats-card .stat {
