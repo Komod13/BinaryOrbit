@@ -32,7 +32,9 @@ const config = ref<AppConfig | null>(null);
 const initialView = ref<MapViewport | null>(null);
 const mapRef = ref<InstanceType<typeof AMapCanvas> | null>(null);
 
-const filter = ref<FilterKind>(readStorage<FilterKind>(STORAGE_KEYS.filter, 'all'));
+const FILTERS: readonly FilterKind[] = ['all', 'restaurant', 'spot'];
+const storedFilter = readStorage<FilterKind>(STORAGE_KEYS.filter, 'all');
+const filter = ref<FilterKind>(FILTERS.includes(storedFilter) ? storedFilter : 'all');
 const drawer = ref<DrawerState>({ mode: 'none' });
 const radius = ref(1000);
 const center = ref<{ lng: number; lat: number } | null>(null);
@@ -271,6 +273,14 @@ function onManualAdd(name: string): void {
   drawer.value = { mode: 'form-new', poi: null, presetName: name };
 }
 
+/** 打开「搜索附近」：清掉上一次选点残留的红色图钉，避免和新搜索叠在一起 */
+function openSearch(): void {
+  picked.value = null;
+  resetDraft();
+  drawer.value = { mode: 'search' };
+  void probeCity(true);
+}
+
 // 移动端浮窗打开时把地图容器缩到浮窗上方，让准星与半径圈保持可见
 watch(dockPanelOpen, async () => {
   await nextTick();
@@ -327,7 +337,13 @@ onMounted(async () => {
   }
 
   const saved = readStorage<MapViewport | null>(STORAGE_KEYS.mapView, null);
-  if (saved && Number.isFinite(saved.lng) && Number.isFinite(saved.lat)) {
+  if (
+    saved &&
+    Number.isFinite(saved.lng) &&
+    Number.isFinite(saved.lat) &&
+    Number.isFinite(saved.zoom) &&
+    saved.zoom > 0
+  ) {
     initialView.value = saved;
     return;
   }
@@ -422,10 +438,7 @@ const showEmptyHint = computed(
       @open-place="onPlaceFromSearch"
       @open-poi="onSearchPick"
       @manual="onManualAdd"
-      @nearby="
-        drawer = { mode: 'search' };
-        probeCity(true);
-      "
+      @nearby="openSearch"
       @focus-search="
         probeCity(true);
         if (drawer.mode === 'search') closeDrawer();
@@ -460,7 +473,7 @@ const showEmptyHint = computed(
       />
     </DockSheet>
 
-    <SideSheet :open="sheetOpen" @close="closeDrawer">
+    <SideSheet :open="sheetOpen" label="地点详情" labelled-by="detail-title" @close="closeDrawer">
       <PlaceDetailPanel
         v-if="detailId !== null"
         :place-id="detailId"

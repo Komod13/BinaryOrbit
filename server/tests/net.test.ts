@@ -84,3 +84,11 @@ test('.env 的 LAN_IP 优先；非法值则回退到自动挑选并给出提示'
   assert.equal(bad.fromEnv, false);
   assert.match(bad.overrideError ?? '', /LAN_IP=192\.168\.88/);
 });
+
+test('.env 的 LAN_IP 写回环地址时同样被忽略', () => {
+  const interfaces = { WLAN: [nic('192.168.88.209')] };
+  const loopback = pickLanAddress(interfaces, '127.0.0.1');
+  assert.equal(loopback.address, '192.168.88.209');
+  assert.equal(loopback.fromEnv, false);
+  assert.match(loopback.overrideError ?? '', /不是合法 IPv4/);
+});

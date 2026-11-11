@@ -88,7 +88,8 @@ export async function handleAmapService(request: Request, url: URL): Promise<Res
   }
 
   const path = url.pathname.replace(/^\/_AMapService/, '');
-  if (!/^\/v[34]\/[A-Za-z0-9/_.-]+$/.test(path)) {
+  // 只允许规规矩矩的 v3/v4 REST 路径；`//` 会造成路径歧义
+  if (!/^\/v[34]\/[A-Za-z0-9/_.-]+$/.test(path) || path.includes('//')) {
     return Response.json({ error: '非法的转发路径' }, { status: 400 });
   }
 
@@ -166,7 +167,9 @@ function mapPoi(raw: Record<string, unknown>, distance: unknown = null): Poi | n
   const lng = Number(location[0]);
   const lat = Number(location[1]);
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
-  const parsedDistance = Number(plain(distance));
+  // 文本检索不返回 distance：空字符串不能被 Number() 当成 0，否则每条结果都会显示「0m」
+  const distanceText = plain(distance);
+  const parsedDistance = Number(distanceText);
   return {
     id: plain(raw.id),
     name: plain(raw.name),
@@ -176,7 +179,7 @@ function mapPoi(raw: Record<string, unknown>, distance: unknown = null): Poi | n
     address: plain(raw.address),
     lng,
     lat,
-    distance: Number.isFinite(parsedDistance) ? parsedDistance : null,
+    distance: distanceText !== '' && Number.isFinite(parsedDistance) ? parsedDistance : null,
     cityName: plain(raw.cityname) || null,
     district: plain(raw.adname) || null,
     province: plain(raw.pname) || null,

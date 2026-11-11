@@ -46,6 +46,7 @@ test('2. 同一 external_id 再次提交 → 不新建地点，只追加到访',
 
   assert.equal(again.deduped, true);
   assert.equal(again.place.id, first.place.id);
+  assert.equal(again.place.visitCount, 2);
 
   const list = expectOk(await call<ListBody>('/api/places'));
   assert.equal(list.places.length, 1);
@@ -168,4 +169,22 @@ test('8. /api/stats 三个数字口径正确（同一家店多次到访只算一
 
   const stats = expectOk(await call<{ restaurant: number; spot: number; city: number }>('/api/stats'));
   assert.deepEqual(stats, { restaurant: 1, spot: 1, city: 2 });
+});
+
+test('9. ?type= 空值等同于不筛选，非法 type 仍然是 400', async () => {
+  expectOk(await call<PlaceBody>('/api/places', { method: 'POST', body: placeFixture() }));
+
+  const all = expectOk(await call<ListBody>('/api/places?type='));
+  assert.equal(all.places.length, 1);
+
+  const bad = await call('/api/places?type=nope');
+  assert.equal(bad.status, 400);
+});
+
+test('10. 不存在的日期（2 月 31 日）不会落库', async () => {
+  const response = await call('/api/places', { method: 'POST', body: placeFixture({ date: '2026-02-31' }) });
+  assert.equal(response.status, 400);
+
+  const list = expectOk(await call<ListBody>('/api/places'));
+  assert.equal(list.places.length, 0);
 });

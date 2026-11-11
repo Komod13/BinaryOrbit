@@ -1,16 +1,18 @@
 import { Hono } from 'hono';
 import { regeo } from '../amap.ts';
-import { ValidationError } from '../validate.ts';
+import { ValidationError, asNumber } from '../validate.ts';
 import { findCityByName, findProvinceAdcode, normalizeCityAdcode } from '../cities.ts';
 
 export const regeoRoute = new Hono();
 
 regeoRoute.get('/', async (c) => {
-  const lng = Number(c.req.query('lng'));
-  const lat = Number(c.req.query('lat'));
-  if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+  const rawLng = c.req.query('lng');
+  const rawLat = c.req.query('lat');
+  if (!rawLng?.trim() || !rawLat?.trim()) {
     throw new ValidationError('缺少有效的 lng 与 lat');
   }
+  const lng = asNumber(rawLng, '经度', -180, 180);
+  const lat = asNumber(rawLat, '纬度', -90, 90);
 
   const raw = await regeo(lng, lat);
 

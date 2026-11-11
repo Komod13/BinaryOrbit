@@ -106,7 +106,13 @@ function openBrowser(url: string): void {
   const command = platform === 'win32' ? 'cmd' : platform === 'darwin' ? 'open' : 'xdg-open';
   const args = platform === 'win32' ? ['/c', 'start', '', url] : [url];
   try {
-    spawn(command, args, { stdio: 'ignore', detached: true }).unref();
+    const child = spawn(command, args, { stdio: 'ignore', detached: true });
+    // spawn 找不到可执行文件时不会同步抛错，而是异步发 'error' 事件；
+    // 不监听会让整个进程退出（无桌面环境的 Linux / Docker 很常见）
+    child.on('error', () => {
+      /* 打不开就算了，控制台里有地址 */
+    });
+    child.unref();
   } catch {
     /* 打不开就算了，控制台里有地址 */
   }

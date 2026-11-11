@@ -12,7 +12,8 @@ const MAX_BYTES = 8192;
  */
 diagRoute.post('/', async (c) => {
   const raw = await c.req.text();
-  if (raw.length > MAX_BYTES) throw new ValidationError('诊断数据过大');
+  // 按 UTF-8 字节数而不是 JS 字符串长度算，中文一个字占 3 字节
+  if (Buffer.byteLength(raw, 'utf8') > MAX_BYTES) throw new ValidationError('诊断数据过大');
   let payload: unknown;
   try {
     payload = JSON.parse(raw);
@@ -28,7 +29,8 @@ diagRoute.post('/', async (c) => {
   console.log('  [diag] 收到浏览器端诊断');
   for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
     const text = value === null || typeof value === 'object' ? JSON.stringify(value) : String(value);
-    console.log(`         ${key.padEnd(16)} ${text.slice(0, 200)}`);
+    // 去掉换行，避免上报内容在控制台里伪造出假的日志行
+    console.log(`         ${key.padEnd(16)} ${text.replace(/[\r\n]+/g, ' ').slice(0, 200)}`);
   }
   console.log(`         ${'user-agent'.padEnd(16)} ${agent}`);
   console.log('');

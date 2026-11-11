@@ -166,7 +166,7 @@ async function submit(): Promise<void> {
     invalidate();
     toast(
       result.deduped
-        ? `「${result.place.name}」已存在，这次记为第 ${(result.place.visitCount ?? 1) + 1} 次到访`
+        ? `「${result.place.name}」已存在，这次记为第 ${result.place.visitCount ?? 1} 次到访`
         : `已保存「${result.place.name}」`,
     );
     emit('saved', { deduped: result.deduped, name: result.place.name });

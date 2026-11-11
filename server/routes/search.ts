@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { getDb } from '../db.ts';
 import { mapPois, searchAround, searchText } from '../amap.ts';
-import { PLACE_TYPES, ValidationError } from '../validate.ts';
-import { findCityByName, normalizeCityAdcode } from '../cities.ts';
+import { PLACE_TYPES, ValidationError, asNumber } from '../validate.ts';
+import { findCitiesByNames, normalizeCityAdcode } from '../cities.ts';
 
 interface ExistingRow {
   id: number;
@@ -13,11 +13,12 @@ export const searchRoute = new Hono();
 
 searchRoute.get('/', async (c) => {
   const keyword = (c.req.query('keyword') ?? '').trim();
-  const typeParam = c.req.query('type');
+  // `?type=` 空值等同于没传
+  const typeParam = (c.req.query('type') ?? '').trim() || undefined;
   if (typeParam && !(PLACE_TYPES as readonly string[]).includes(typeParam)) {
     throw new ValidationError('type 只能是 restaurant / spot');
   }
-  const type = (typeParam ?? undefined) as 'restaurant' | 'spot' | undefined;
+  const type = typeParam as 'restaurant' | 'spot' | undefined;
 
   let body: Record<string, unknown>;
   let mode: 'text' | 'around';
@@ -27,17 +28,21 @@ searchRoute.get('/', async (c) => {
     const city = (c.req.query('city') ?? '').trim() || undefined;
     body = await searchText(keyword, type, city);
   } else {
-    const lng = Number(c.req.query('lng'));
-    const lat = Number(c.req.query('lat'));
-    if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+    const rawLng = c.req.query('lng');
+    const rawLat = c.req.query('lat');
+    if (!rawLng?.trim() || !rawLat?.trim()) {
       throw new ValidationError('关键词搜索需要 keyword，周边搜索需要 lng 与 lat');
     }
+    // 显式校验范围：Number('') 是 0，不能让空坐标变成几内亚湾
+    const lng = asNumber(rawLng, '经度', -180, 180);
+    const lat = asNumber(rawLat, '纬度', -90, 90);
     const radius = Math.min(5000, Math.max(100, Number(c.req.query('radius') ?? 1000) || 1000));
     mode = 'around';
     body = await searchAround(lng, lat, radius, type ?? 'restaurant');
   }
 
   const pois = mapPois(body);
+  const dictByCityName = findCitiesByNames(pois.map((poi) => poi.cityName));
   const ids = pois.map((poi) => poi.id).filter(Boolean);
   const existing = new Map<string, number>();
   if (ids.length) {
@@ -51,7 +56,9 @@ searchRoute.get('/', async (c) => {
   const results = pois
     .filter((poi) => !type || poi.type === type)
     .map((poi) => {
-      const dict = findCityByName(poi.cityName);
+      // cityname 去重后只查一次字典（之前每个 POI 一次 SELECT）
+      const name = (poi.cityName ?? '').trim();
+      const dict = name ? dictByCityName.get(name) : undefined;
       const cityAdcode = normalizeCityAdcode(dict?.adcode ?? null);
       return {
         ...poi,

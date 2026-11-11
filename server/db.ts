@@ -26,7 +26,3 @@ export function closeDb(): void {
   db.close();
   db = null;
 }
-
-export function nowIso(): string {
-  return new Date().toISOString();
-}

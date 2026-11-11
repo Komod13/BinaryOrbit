@@ -17,7 +17,12 @@ const sizeStyle = computed(() => ({ '--od-icon-size': `${props.size}px` }));
 </script>
 
 <template>
-  <div class="star-row" :class="{ 'is-readonly': readonly }" role="img" :aria-label="`评分 ${modelValue ?? 0} 星`">
+  <div
+    class="star-row"
+    :class="{ 'is-readonly': readonly }"
+    :role="readonly ? 'img' : 'group'"
+    :aria-label="`评分 ${modelValue ?? 0} 星`"
+  >
     <button
       v-for="value in [1, 2, 3, 4, 5]"
       :key="value"

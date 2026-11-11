@@ -53,10 +53,6 @@ export const PROVINCES: { adcode: string; name: string }[] = [
 
 export const TAIWAN_ADCODE = '710000';
 
-export function isProvinceAdcode(adcode: string | null | undefined): boolean {
-  return Boolean(adcode && /^\d{2}0000$/.test(adcode));
-}
-
 /**
  * 城市 adcode 归一化：直辖市的区/伪城市全部折叠到省级 adcode。
  * 其他省份原样返回（省直辖县级市保留自己的 adcode）。
@@ -92,9 +88,13 @@ export async function syncCityDict(): Promise<number> {
   );
 
   let count = 0;
-  const write = (adcode: string, name: string, center?: string) => {
-    const [lng, lat] = (center ?? '').split(',').map(Number);
-    insert.run(adcode, name, Number.isFinite(lng) ? lng : null, Number.isFinite(lat) ? lat : null);
+  const write = (adcode: string, name: unknown, center?: unknown) => {
+    // AMap 的空 center 有时是 []、有时是 ""：都不能被 Number('') 当成 0,0
+    const [lngText, latText] = (typeof center === 'string' ? center : '').split(',');
+    const lng = lngText?.trim() ? Number(lngText) : Number.NaN;
+    const lat = latText?.trim() ? Number(latText) : Number.NaN;
+    const label = String(name ?? '').trim() || adcode;
+    insert.run(adcode, label, Number.isFinite(lng) ? lng : null, Number.isFinite(lat) ? lat : null);
     count += 1;
   };
 
@@ -133,6 +133,13 @@ export function cityDictCount(): number {
   return row.c;
 }
 
+/** 「杭州市」→「杭州」：去掉常见行政后缀，再做前缀匹配。 */
+const CITY_SUFFIX = /(市|地区|盟|自治州|特别行政区|省|自治区)$/u;
+
+function bareCityName(raw: string): string {
+  return raw.replace(CITY_SUFFIX, '');
+}
+
 /** 名称 → adcode。先精确匹配，再补「市/地区/自治州」等后缀的模糊匹配。 */
 export function findCityByName(name: string | null | undefined): CityDictRow | null {
   const raw = (name ?? '').trim();
@@ -143,12 +150,42 @@ export function findCityByName(name: string | null | undefined): CityDictRow | n
     | undefined;
   if (exact) return exact;
 
-  const bare = raw.replace(/(市|地区|盟|自治州|特别行政区|省|自治区)$/u, '');
+  const bare = bareCityName(raw);
   if (!bare) return null;
   const like = db
     .prepare("SELECT adcode, name, lng, lat FROM city_dict WHERE name LIKE ? LIMIT 1")
     .get(`${bare}%`) as CityDictRow | undefined;
   return like ?? null;
+}
+
+/**
+ * 批量把 POI 的 cityname 解析成字典行：只查一次库，避免搜索结果逐条查询（N+1）。
+ * 返回的 Map 以上下文里的原始名称（去首尾空格后）为 key。
+ */
+export function findCitiesByNames(names: readonly (string | null | undefined)[]): Map<string, CityDictRow> {
+  const wanted = new Set<string>();
+  for (const name of names) {
+    const raw = (name ?? '').trim();
+    if (raw) wanted.add(raw);
+  }
+
+  const found = new Map<string, CityDictRow>();
+  if (!wanted.size) return found;
+
+  // city_dict 只有 400 多行，一次性读进内存比逐名称往返 SQLite 更划算
+  const rows = getDb().prepare('SELECT adcode, name, lng, lat FROM city_dict').all() as unknown as CityDictRow[];
+  for (const raw of wanted) {
+    const exact = rows.find((row) => row.name === raw);
+    if (exact) {
+      found.set(raw, exact);
+      continue;
+    }
+    const bare = bareCityName(raw);
+    if (!bare) continue;
+    const fuzzy = rows.find((row) => row.name.startsWith(bare));
+    if (fuzzy) found.set(raw, fuzzy);
+  }
+  return found;
 }
 
 export function findCityByAdcode(adcode: string | null | undefined): CityDictRow | null {

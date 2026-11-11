@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useQuery } from '@tanstack/vue-query';
 import Icon from './Icon.vue';
 import { qk, searchText } from '../lib/queries.ts';
@@ -30,6 +30,18 @@ const keyword = ref('');
 const open = ref(false);
 const active = ref(0);
 let debounce: ReturnType<typeof setTimeout> | null = null;
+let blurTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 把还没到点的输入立刻生效：Enter 不能依赖 300ms 防抖，否则会打开上一个关键词的结果 */
+function commitKeyword(): string {
+  if (debounce) {
+    clearTimeout(debounce);
+    debounce = null;
+  }
+  const trimmed = input.value.trim();
+  keyword.value = trimmed;
+  return trimmed;
+}
 
 watch(input, (value) => {
   if (debounce) clearTimeout(debounce);
@@ -37,6 +49,7 @@ watch(input, (value) => {
   open.value = trimmed.length > 0;
   active.value = 0;
   debounce = setTimeout(() => {
+    debounce = null;
     keyword.value = trimmed;
   }, 300);
 });
@@ -84,6 +97,20 @@ const rows = computed(() => [
 
 const hasRows = computed(() => rows.value.length > 0);
 
+/** 每个建议项的 DOM id：combobox 的 aria-activedescendant 指向当前高亮项 */
+function optionId(index: number): string | undefined {
+  const row = rows.value[index];
+  if (!row) return undefined;
+  return row.kind === 'place' ? `map-suggest-p${row.place.id}` : `map-suggest-o${row.poi.id}`;
+}
+
+const activeDescendant = computed(() => (open.value ? optionId(active.value) : undefined));
+
+// 远程结果增减时把键盘高亮拉回可用范围
+watch(rows, (next) => {
+  if (active.value >= next.length) active.value = 0;
+});
+
 function moveActive(delta: number): void {
   const total = rows.value.length;
   if (!total) return;
@@ -100,10 +127,12 @@ function triggerRow(index: number): void {
 }
 
 function onEnter(): void {
+  const current = commitKeyword();
+  if (!current) return;
   if (hasRows.value) triggerRow(active.value);
-  else if (keyword.value) {
+  else {
     open.value = false;
-    emit('manual', keyword.value);
+    emit('manual', current);
     input.value = '';
   }
 }
@@ -121,10 +150,17 @@ function pickManual(): void {
 }
 
 function blurLater(): void {
-  setTimeout(() => {
+  if (blurTimer) clearTimeout(blurTimer);
+  blurTimer = setTimeout(() => {
+    blurTimer = null;
     open.value = false;
   }, 140);
 }
+
+onBeforeUnmount(() => {
+  if (debounce) clearTimeout(debounce);
+  if (blurTimer) clearTimeout(blurTimer);
+});
 
 const chips = computed(() => {
   const all = props.places;
@@ -145,8 +181,12 @@ const chips = computed(() => {
           type="search"
           placeholder="搜索餐厅、景点或地址"
           autocomplete="off"
+          role="combobox"
+          aria-autocomplete="list"
           aria-label="搜索地点"
+          aria-controls="map-suggest-list"
           :aria-expanded="open"
+          :aria-activedescendant="activeDescendant"
           @focus="
             () => {
               emit('focusSearch');
@@ -181,14 +221,24 @@ const chips = computed(() => {
       </button>
     </div>
 
-    <div v-if="open" class="suggest">
+    <div
+      v-if="open"
+      id="map-suggest-list"
+      class="suggest"
+      :role="hasRows ? 'listbox' : undefined"
+      :aria-label="hasRows ? '搜索建议' : undefined"
+    >
       <button
         v-for="(row, index) in rows"
+        :id="optionId(index)"
         :key="row.kind === 'place' ? `p${row.place.id}` : `o${row.poi.id}`"
         class="suggest-row"
         :class="{ 'is-active': index === active }"
+        role="option"
+        :aria-selected="index === active"
         type="button"
-        @mousedown.prevent="triggerRow(index)"
+        @mousedown.prevent
+        @click="triggerRow(index)"
         @mouseenter="active = index"
       >
         <span class="suggest-main">
@@ -210,13 +260,13 @@ const chips = computed(() => {
       <div v-if="!hasRows" class="suggest-empty">
         <p v-if="remoteLoading">正在搜索…</p>
         <p v-else>没有找到「{{ keyword }}」</p>
-        <button class="btn btn--primary btn--sm" type="button" @mousedown.prevent="pickManual">
+        <button class="btn btn--primary btn--sm" type="button" @mousedown.prevent @click="pickManual">
           <Icon name="plus" :size="16" />记一个「{{ keyword }}」
         </button>
       </div>
 
       <div class="suggest-foot">
-        <button class="scope-toggle" type="button" @mousedown.prevent="toggleScope">
+        <button class="scope-toggle" type="button" @mousedown.prevent @click="toggleScope">
           <Icon name="pin" :size="14" />
           搜索范围：{{ scopeLabel }}
           <span class="scope-hint">切换</span>

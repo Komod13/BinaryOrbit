@@ -98,7 +98,6 @@ export function installDiag(): void {
   let frames = 0;
   let windowStart = performance.now();
   let previous = windowStart;
-  let worstGap = 0;
   let fps = 0;
   let mapFramesStart = diagState.mapFrames;
   let mapFps = 0;
@@ -209,7 +208,6 @@ export function installDiag(): void {
     frames++;
     const gap = now - previous;
     previous = now;
-    worstGap = Math.max(worstGap, gap);
     windowStats.worstFrameMs = Math.max(windowStats.worstFrameMs, gap);
     if (gap >= 200) windowStats.frozenFrames++;
 
@@ -229,12 +227,12 @@ export function installDiag(): void {
       put('build', __BUILD_STAMP__);
       put('fps', `${fps} fps（最低 ${windowStats.minFps}）· 卡顿 ${windowStats.frozenFrames} 次`);
       put('tasks', `主线程延迟 ${Math.round(windowStats.maxLoopLagMs)}ms · 长任务 ${windowStats.longTasks}`);
-      put('map', `地图 ${mapFps} 帧/s · ${diagState.renderer} · zoom ${diagState.zoom}`);      put('markers', `标记 ${diagState.markers}/${diagState.places} · 重建 ${Math.round(diagState.rebuildMs)}ms`);
+      put('map', `地图 ${mapFps} 帧/s · ${diagState.renderer} · zoom ${diagState.zoom}`);
+      put('markers', `标记 ${diagState.markers}/${diagState.places} · 重建 ${Math.round(diagState.rebuildMs)}ms`);
       put('env', `dpr ${window.devicePixelRatio} · ${window.innerWidth}×${window.innerHeight}`);
       window.__boDiag = snapshot('实时');
       frames = 0;
       windowStart = now;
-      worstGap = 0;
       mapFramesStart = diagState.mapFrames;
     }
 

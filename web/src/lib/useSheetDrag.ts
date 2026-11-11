@@ -76,7 +76,7 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
   function stopListening(): void {
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
-    window.removeEventListener('pointercancel', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerCancel);
   }
 
   /** 从 CSS 读取统一的大圆角，保证 JS 渐变和样式表里的数值一致 */
@@ -155,7 +155,7 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
 
     window.addEventListener('pointermove', onPointerMove, { passive: false });
     window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
     event.preventDefault();
   }
 
@@ -183,6 +183,22 @@ export function useSheetDrag(panel: Ref<HTMLElement | null>) {
     lastTime = event.timeStamp;
 
     event.preventDefault();
+  }
+
+  /** pointercancel 的坐标不可靠（常为 0），不能走 onPointerUp 的位移判定 */
+  function onPointerCancel(event: PointerEvent): void {
+    if (!active) return;
+    if (pointerId !== null && event.pointerId !== pointerId) return;
+    active = false;
+    pointerId = null;
+    stopListening();
+    const element = panel.value;
+    setDragging(false);
+    setExpanded(false);
+    if (!element) return;
+    element.style.height = '';
+    element.scrollTop = 0;
+    clearTopRadius();
   }
 
   function onPointerUp(event: PointerEvent): void {

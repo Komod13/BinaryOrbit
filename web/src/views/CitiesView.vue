@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, shallowRef, watch } from 'vue';
 import { useQuery, useQueryClient } from '@tanstack/vue-query';
 import { useRouter } from 'vue-router';
 import Icon from '../components/Icon.vue';
@@ -21,12 +21,24 @@ const error = ref('');
 const ready = ref(false);
 const activeCity = ref<CityStat | { adcode: string; name: string; unlit: true } | null>(null);
 const zoomedOut = ref(true);
+// keep-alive 下切到其他 Tab 时暂停边界轮询，回来再继续
+const pageActive = ref(true);
+
+/** 边界轮询退避：2s → 30s，最多 24 次，避免某省永久失败时无限打服务 */
+const GEO_POLL_MIN_MS = 2000;
+const GEO_POLL_MAX_MS = 30_000;
+const GEO_POLL_LIMIT = 24;
+const geoAttempts = ref(0);
+// 已经拿到的省份：轮询时只让服务端下发新增边界，避免每次重复传几 MB
+const loadedProvinces = ref<string[]>([]);
 
 const map = shallowRef<any>(null);
 let AMap: any = null;
 let geojsonLayers: any[] = [];
 let labelMarkers: any[] = [];
 let routeLine: any = null;
+let labelsSignature = '';
+let styleSignature = '';
 const polygons = new Map<string, any>();
 const rendered = new Set<string>();
 
@@ -38,11 +50,15 @@ const citiesQuery = useQuery({
 
 const geoQuery = useQuery({
   queryKey: qk.citiesGeo,
-  queryFn: fetchCitiesGeo,
-  enabled: computed(() => config.value !== null),
+  queryFn: async () => {
+    geoAttempts.value += 1;
+    return fetchCitiesGeo(loadedProvinces.value);
+  },
+  enabled: computed(() => pageActive.value && config.value !== null),
   refetchInterval: (query) => {
     const data = query.state.data as { missing?: string[] } | undefined;
-    return data?.missing?.length ? 2000 : false;
+    if (!data?.missing?.length || geoAttempts.value >= GEO_POLL_LIMIT) return false;
+    return Math.min(GEO_POLL_MAX_MS, GEO_POLL_MIN_MS * Math.max(1, geoAttempts.value));
   },
 });
 
@@ -51,9 +67,12 @@ const visitedMap = computed(() => new Map(cities.value.map((city) => [city.adcod
 
 const progress = computed(() => {
   const data = geoQuery.data.value;
-  if (!data) return '';
+  if (!data || !data.missing.length) return '';
   const done = data.loaded.length;
-  return data.missing.length ? `正在加载城市边界 ${done}/${data.total}` : '';
+  if (geoAttempts.value >= GEO_POLL_LIMIT) {
+    return `部分城市边界加载失败（${done}/${data.total}），切到标记页再回来会重试`;
+  }
+  return `正在加载城市边界 ${done}/${data.total}`;
 });
 
 const totals = computed(() => ({
@@ -123,14 +142,56 @@ function renderFeatures(): void {
     geojsonLayers.push(layer);
   }
 
-  paint();
-  renderLabels();
-  renderRoute();
+  // 这批要素已经进图层，下一轮只让服务端下发新增省份
+  // （地图还没就绪时上面的 guard 会提前返回，此刻不会误标为已加载）
+  loadedProvinces.value = data.loaded;
+
+  // 只有「哪些城市已点亮」变化时才重刷多边形样式；新增轮廓构造时已经带好样式
+  const visitedKey = cities.value.map((city) => city.adcode).join(',');
+  if (visitedKey !== styleSignature) {
+    styleSignature = visitedKey;
+    paint();
+  }
+
+  // 城市没变时不需要把所有标签和航线删了重建
+  const key = labelsKey();
+  if (key !== labelsSignature) {
+    labelsSignature = key;
+    renderLabels();
+    renderRoute();
+  }
+}
+
+/** 城市标签/航线是否真的需要重建：城市数据或它的可用中心坐标变了才变 */
+function labelsKey(): string {
+  return JSON.stringify(
+    cities.value.map((city) => {
+      const center = cityCenter(city.adcode);
+      return [
+        city.adcode,
+        city.name,
+        city.restaurantCount,
+        city.spotCount,
+        city.manual ? 1 : 0,
+        city.firstVisitedOn ?? '',
+        city.lastVisitedOn ?? '',
+        center ? `${center.lng},${center.lat}` : '',
+      ];
+    }),
+  );
 }
 
 function cityCenter(adcode: string): { lng: number; lat: number } | null {
   const city = visitedMap.value.get(adcode);
-  if (city?.lng && city?.lat) return { lng: city.lng, lat: city.lat };
+  if (
+    city &&
+    city.lng !== null &&
+    city.lat !== null &&
+    Number.isFinite(city.lng) &&
+    Number.isFinite(city.lat)
+  ) {
+    return { lng: city.lng, lat: city.lat };
+  }
   const polygon = polygons.get(adcode);
   if (!polygon) return null;
   const bounds = polygon.getBounds?.();
@@ -157,13 +218,29 @@ function renderLabels(): void {
     if (!position) continue;
     const element = document.createElement('div');
     element.className = 'city-label';
-    element.innerHTML =
-      `<span class="city-dot"></span>` +
-      `<span class="city-label-name">${city.name}</span>` +
-      `<span class="city-label-meta">${labelMeta(city)}</span>`;
+    // 城市名可能来自 /api/cities/manual 的用户输入，必须用 textContent，不能拼 innerHTML
+    const dot = document.createElement('span');
+    dot.className = 'city-dot';
+    const label = document.createElement('span');
+    label.className = 'city-label-name';
+    label.textContent = city.name;
+    const meta = document.createElement('span');
+    meta.className = 'city-label-meta';
+    meta.textContent = labelMeta(city);
+    element.append(dot, label, meta);
+    element.tabIndex = 0;
+    element.setAttribute('role', 'button');
+    element.setAttribute('aria-label', `${city.name}，${labelMeta(city)}`);
+    const open = (): void => openCity(city.adcode, city.name);
     element.addEventListener('click', (event) => {
       event.stopPropagation();
-      openCity(city.adcode, city.name);
+      open();
+    });
+    element.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      event.stopPropagation();
+      open();
     });
     labelMarkers.push(
       new AMap.Marker({ position: [position.lng, position.lat], content: element, anchor: 'center', zIndex: 200 }),
@@ -257,7 +334,23 @@ function saveView(): void {
   }, 400);
 }
 
+/** zoom < 5 时城市标签只留名字，收起「餐厅 N · 景点 M」副行（见 DESIGN.md §3.3） */
+function syncZoomState(): void {
+  zoomedOut.value = (map.value?.getZoom() ?? 4) < 5;
+}
+
 watch([() => geoQuery.data.value, () => citiesQuery.data.value], () => renderFeatures());
+
+// keep-alive：切到标记页时停掉城市边界轮询，避免后台每 2s 重复拉全量 GeoJSON
+// 回到本页时重置退避计数，给失败过的省份一次新的重试窗口
+onActivated(() => {
+  pageActive.value = true;
+  geoAttempts.value = 0;
+});
+onDeactivated(() => {
+  pageActive.value = false;
+});
+
 onMounted(async () => {
   try {
     config.value = await queryClient.fetchQuery({
@@ -276,7 +369,13 @@ onMounted(async () => {
   const saved = readStorage<MapViewport | null>(STORAGE_KEYS.citiesView, null);
   // 宽屏用 zoom 5 让全国填满视口，窄屏用 4
   const defaultZoom = window.innerWidth >= 1100 ? 5 : 4;
-  const view = saved ?? { ...CHINA_VIEW, zoom: defaultZoom };
+  const valid =
+    saved &&
+    Number.isFinite(saved.lng) &&
+    Number.isFinite(saved.lat) &&
+    Number.isFinite(saved.zoom) &&
+    saved.zoom > 0;
+  const view = valid ? saved : { ...CHINA_VIEW, zoom: defaultZoom };
   const instance = new AMap.Map(host.value, {
     zoom: view.zoom,
     center: [view.lng, view.lat],
@@ -286,12 +385,17 @@ onMounted(async () => {
   });
   map.value = instance;
   ready.value = true;
+  syncZoomState();
 
   instance.on('complete', () => {
+    syncZoomState();
     renderFeatures();
   });
   instance.on('moveend', saveView);
-  instance.on('zoomend', saveView);
+  instance.on('zoomend', () => {
+    syncZoomState();
+    saveView();
+  });
 });
 
 onBeforeUnmount(() => {
@@ -317,7 +421,7 @@ onBeforeUnmount(() => {
     <div v-if="error" class="amap-error">{{ error }}</div>
     <div v-else-if="!ready" class="map-placeholder">地图加载中…</div>
 
-    <SideSheet :open="activeCity !== null" @close="activeCity = null">
+    <SideSheet :open="activeCity !== null" label="城市详情" labelled-by="city-sheet-title" @close="activeCity = null">
       <div v-if="activeCity" class="panel">
         <div class="sheet-head">
           <span class="tag tag--quiet">城市</span>
@@ -325,7 +429,7 @@ onBeforeUnmount(() => {
             <Icon name="close" :size="18" />
           </button>
         </div>
-        <h2 class="sheet-title">{{ activeCity.name }}</h2>
+        <h2 class="sheet-title" id="city-sheet-title">{{ activeCity.name }}</h2>
 
         <template v-if="'unlit' in activeCity">
           <p class="sheet-sub">还没有点亮这座城市</p>

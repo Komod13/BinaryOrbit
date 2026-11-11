@@ -115,7 +115,7 @@ onBeforeUnmount(() => {
     <p v-if="isLoading" class="sheet-sub">加载中…</p>
 
     <template v-else-if="place">
-      <h2 class="sheet-title">{{ place.name }}</h2>
+      <h2 class="sheet-title" id="detail-title">{{ place.name }}</h2>
       <p class="sheet-sub">
         {{ categoryLabel(place.category, TYPE_LABEL[place.type]) }}
         <template v-if="place.address"> · {{ place.address }}</template>

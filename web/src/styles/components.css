@@ -143,7 +143,8 @@
   transition: opacity 0.16s var(--ease);
 }
 
-.pin-marker:hover .pin-label {
+.pin-marker:hover .pin-label,
+.pin-marker:focus-visible .pin-label {
   opacity: 1;
 }
 

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MUNICIPALITIES, PROVINCES, TAIWAN_ADCODE } from './cities.ts';
 
@@ -160,10 +160,4 @@ export function allCachedFeatures(): GeoFeature[] {
 /** 测试/维护用：清空内存缓存（不动磁盘文件）。 */
 export function clearGeoMemory(): void {
   memory.clear();
-}
-
-export function cachedProvinceCountOnDisk(): number {
-  const dir = geoDir();
-  if (!existsSync(dir)) return 0;
-  return readdirSync(dir).filter((file) => file.endsWith('.json')).length;
 }

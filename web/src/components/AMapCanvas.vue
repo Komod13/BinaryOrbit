@@ -135,24 +135,41 @@ function spreadGroups(instance: any): MarkerGroup[] {
   }));
 }
 
+function activatePin(element: HTMLDivElement): void {
+  const id = Number(element.dataset.placeId);
+  if (Number.isFinite(id)) emit('markerClick', id);
+}
+
+/** 所有自绘标记共用：Enter / 空格等同点击 */
+function onMarkerKeydown(event: KeyboardEvent, activate: () => void): void {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  event.stopPropagation();
+  activate();
+}
+
 /** 标记 DOM 只建一次，之后只改内容/位置（避免每次重建都重新解码图标、重排 DOM）。 */
 function createPinElement(): HTMLDivElement {
   const element = document.createElement('div');
   element.className = 'pin-marker';
+  element.tabIndex = 0;
+  element.setAttribute('role', 'button');
   element.innerHTML =
     '<span class="pin-dot"><span class="pin-plate"><img class="pin-img" alt="" /></span></span>' +
     '<span class="pin-label"></span>';
   element.addEventListener('click', (event) => {
     event.stopPropagation();
-    const id = Number(element.dataset.placeId);
-    if (Number.isFinite(id)) emit('markerClick', id);
+    activatePin(element);
   });
+  element.addEventListener('keydown', (event) => onMarkerKeydown(event, () => activatePin(element)));
   return element;
 }
 
 function fillPin(element: HTMLDivElement, place: Place): void {
   element.dataset.placeId = String(place.id);
+  element.tabIndex = 0;
   element.className = `pin-marker pin-marker--${place.type}`;
+  element.setAttribute('aria-label', `${place.type === 'restaurant' ? '餐厅' : '景点'}：${place.name}`);
   if (highlight.value.size) {
     element.classList.add(highlight.value.has(place.cityAdcode ?? '') ? 'is-highlight' : 'is-dim');
   }
@@ -165,30 +182,39 @@ function fillPin(element: HTMLDivElement, place: Place): void {
   element.title = place.name;
 }
 
+function activateCluster(element: HTMLDivElement): void {
+  const places = (element as unknown as { __places?: Place[] }).__places;
+  if (!places?.length) return;
+  const current = map.value?.getZoom() ?? zoom.value;
+  // 聚合成气泡时至少还要再进一级：16 → 18，直接跨进「强制单点」层级
+  const next = Math.min(MAX_ZOOM, Math.max(current + 2, 14));
+  const lng = places.reduce((total, place) => total + place.lng, 0) / places.length;
+  const lat = places.reduce((total, place) => total + place.lat, 0) / places.length;
+  map.value?.setZoomAndCenter(next, [lng, lat]);
+}
+
 function createClusterElement(): HTMLDivElement {
   const element = document.createElement('div');
   element.className = 'pin-cluster';
+  element.tabIndex = 0;
+  element.setAttribute('role', 'button');
   element.innerHTML = '<span></span>';
   element.addEventListener('click', (event) => {
     event.stopPropagation();
-    const places = (element as unknown as { __places?: Place[] }).__places;
-    if (!places?.length) return;
-    const current = map.value?.getZoom() ?? zoom.value;
-    // 聚合成气泡时至少还要再进一级：16 → 18，直接跨进「强制单点」层级
-    const next = Math.min(MAX_ZOOM, Math.max(current + 2, 14));
-    const lng = places.reduce((total, place) => total + place.lng, 0) / places.length;
-    const lat = places.reduce((total, place) => total + place.lat, 0) / places.length;
-    map.value?.setZoomAndCenter(next, [lng, lat]);
+    activateCluster(element);
   });
+  element.addEventListener('keydown', (event) => onMarkerKeydown(event, () => activateCluster(element)));
   return element;
 }
 
 function fillCluster(element: HTMLDivElement, places: Place[]): void {
   (element as unknown as { __places?: Place[] }).__places = places;
+  element.tabIndex = 0;
   const count = element.querySelector('span');
   const text = String(places.length);
   if (count && count.textContent !== text) count.textContent = text;
   element.title = `${places.length} 个地点`;
+  element.setAttribute('aria-label', `${places.length} 个地点，点击放大`);
 }
 
 function createSlot(kind: 'pin' | 'cluster'): MarkerSlot {
@@ -236,7 +262,13 @@ function rebuildMarkers(): void {
     used++;
   }
 
-  for (let i = used; i < slots.length; i++) slots[i]?.marker.hide();
+  for (let i = used; i < slots.length; i++) {
+    const slot = slots[i];
+    if (!slot) continue;
+    slot.marker.hide();
+    // 隐藏的标记不能再被 Tab 聚焦
+    slot.el.tabIndex = -1;
+  }
 
   diagState.markers = used;
   diagState.places = props.places.length;
@@ -478,6 +510,8 @@ function onHostContextMenu(event: MouseEvent): void {
 let labelSettings: LabelSettings = { mode: 'on', maxZoom: 12, touch: false, source: 'pc' };
 let labelLayers: any[] = [];
 let labelsVisibleNow: boolean | null = null;
+const labelRetryTimers = new Set<ReturnType<typeof setTimeout>>();
+let labelRetryScheduled = false;
 
 function collectLabelLayers(): any[] {
   const instance = map.value;
@@ -492,6 +526,7 @@ function collectLabelLayers(): any[] {
 }
 
 function applyLabelVisibility(visible: boolean): void {
+  if (!map.value) return;
   const layers = collectLabelLayers();
   if (!layers.length) {
     diagState.labelsVisible = 'no-layer';
@@ -507,6 +542,20 @@ function applyLabelVisibility(visible: boolean): void {
   }
 }
 
+/** 注记图层可能在首帧之后才挂上：退避重试几次，且同一时间只排一组，避免缩放时累积定时器 */
+function scheduleLabelRetries(): void {
+  if (labelRetryScheduled) return;
+  labelRetryScheduled = true;
+  for (const delay of [200, 600, 1500, 3000]) {
+    const timer = setTimeout(() => {
+      labelRetryTimers.delete(timer);
+      if (!labelRetryTimers.size) labelRetryScheduled = false;
+      if (!labelLayers.length) applyLabelVisibility(labelsWanted());
+    }, delay);
+    labelRetryTimers.add(timer);
+  }
+}
+
 /** auto：低 zoom 显示、高 zoom 隐藏；on：始终显示；off：始终隐藏。 */
 function labelsWanted(): boolean {
   if (labelSettings.mode === 'on') return true;
@@ -516,14 +565,7 @@ function labelsWanted(): boolean {
 
 function syncLabelsByZoom(): void {
   applyLabelVisibility(labelsWanted());
-  // 注记图层可能在首帧之后才挂上，没找到就退避重试几次
-  if (!labelLayers.length) {
-    for (const delay of [200, 600, 1500, 3000]) {
-      setTimeout(() => {
-        if (!labelLayers.length) applyLabelVisibility(labelsWanted());
-      }, delay);
-    }
-  }
+  if (!labelLayers.length) scheduleLabelRetries();
 }
 
 onMounted(async () => {
@@ -626,6 +668,9 @@ watch(() => props.picked, () => syncPick());
 onBeforeUnmount(() => {
   clearMarkers();
   if (clusterTimer) clearTimeout(clusterTimer);
+  for (const timer of labelRetryTimers) clearTimeout(timer);
+  labelRetryTimers.clear();
+  labelRetryScheduled = false;
   cancelPress();
   const hostNode = host.value;
   hostNode?.removeEventListener('pointerdown', onHostPointerDown);

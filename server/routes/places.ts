@@ -180,7 +180,8 @@ export function parseVisitInput(body: Record<string, unknown>, placeType: string
 export const placesRoute = new Hono();
 
 placesRoute.get('/', (c) => {
-  const type = c.req.query('type') ?? null;
+  // `?type=`（空值）等同于没传，不能当筛选条件
+  const type = c.req.query('type') || null;
   if (type && !(PLACE_TYPES as readonly string[]).includes(type)) {
     throw new ValidationError('type 只能是 restaurant / spot');
   }
@@ -215,7 +216,9 @@ placesRoute.post('/', async (c) => {
       | undefined;
     if (existing) {
       const visit = insertVisit(existing.id, input);
-      return c.json({ place: toPlace(existing), visit: toVisit(visit), deduped: true }, 200);
+      // 返回追加后的真实到访次数，前端 toast 才能说清是第几次
+      const place = toPlace({ ...existing, visit_count: visitCount(existing.id) });
+      return c.json({ place, visit: toVisit(visit), deduped: true }, 200);
     }
   }
 

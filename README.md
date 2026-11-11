@@ -93,7 +93,7 @@
 | `npm start` | 启动生产服务（需要先构建 `web/dist`） |
 | `npm run build` | 构建前端到 `web/dist` |
 | `npm run dev:server` / `dev:web` | 单独起后端 watch / Vite |
-| `npm test` | 后端集成测试（`node --test`，高德接口全部 mock） |
+| `npm test` | 后端集成 / 单元测试（`node --test`，不请求外网） |
 | `npm run typecheck` | `vue-tsc --noEmit`（含 `.vue` 里的 script） |
 
 ### 手机上排查卡顿

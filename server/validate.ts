@@ -20,7 +20,9 @@ export function asText(value: unknown, field: string, options: { max?: number; r
 }
 
 export function asNumber(value: unknown, field: string, min: number, max: number): number {
-  const num = typeof value === 'number' ? value : Number(value);
+  // Number(null) / Number('') 都是 0：不能让缺省坐标悄悄落到 (0, 0)
+  const missing = value === undefined || value === null || (typeof value === 'string' && !value.trim());
+  const num = missing ? Number.NaN : typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(num)) throw new ValidationError(`${field}必须是数字`);
   if (num < min || num > max) throw new ValidationError(`${field}需在 ${min}–${max} 之间`);
   return num;
@@ -39,6 +41,8 @@ export function asDate(value: unknown, field = '日期'): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new ValidationError(`${field}格式应为 YYYY-MM-DD`);
   const date = new Date(`${text}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) throw new ValidationError(`${field}不是有效日期`);
+  // Date 会把 2026-02-31 悄悄滚到 3 月，往返比对才能挡住不存在的日期
+  if (date.toISOString().slice(0, 10) !== text) throw new ValidationError(`${field}不是有效日期`);
   const year = Number(text.slice(0, 4));
   if (year < 1900 || year > 2100) throw new ValidationError(`${field}需在 1900–2100 年之间`);
   return text;
@@ -62,5 +66,3 @@ export function asPriceTier(value: unknown, type: string): PriceTier | null {
 
 export const PLACE_TYPES = ['restaurant', 'spot'] as const;
 export type PlaceType = (typeof PLACE_TYPES)[number];
-
-export const DATE_TODAY = (): string => new Date().toLocaleDateString('sv-SE');

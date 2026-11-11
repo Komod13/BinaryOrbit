@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getDb } from '../db.ts';
-import { findCityByAdcode, isProvinceAdcode, normalizeCityAdcode, provinceNameOf } from '../cities.ts';
+import { findCityByAdcode, normalizeCityAdcode, provinceNameOf } from '../cities.ts';
 import { ValidationError, asText } from '../validate.ts';
 import { allCachedFeatures, geoStatus, warmBoundaries } from '../geo.ts';
 
@@ -47,8 +47,6 @@ export function listCities() {
         row.manual_name ??
         row.dict_name ??
         provinceNameOf(row.adcode) ??
-        (isProvinceAdcode(row.adcode) ? row.adcode : null) ??
-        findCityByAdcode(row.adcode)?.name ??
         row.adcode;
       return {
         adcode: row.adcode,
@@ -72,12 +70,20 @@ citiesRoute.get('/', (c) => c.json({ cities: listCities() }));
 citiesRoute.get('/geo', (c) => {
   warmBoundaries();
   const status = geoStatus();
+  // 客户端把已经拿到的省份传回来，只下发新增的部分（首次为空 = 全量）
+  const known = new Set(
+    (c.req.query('loaded') ?? '')
+      .split(',')
+      .map((code) => code.trim())
+      .filter((code) => /^\d{6}$/.test(code)),
+  );
+  const features = allCachedFeatures().filter((feature) => !known.has(feature.properties.province));
   return c.json({
     total: status.total,
     loaded: status.loaded,
     missing: status.missing,
     unsupported: status.unsupported,
-    geojson: { type: 'FeatureCollection', features: allCachedFeatures() },
+    geojson: { type: 'FeatureCollection', features },
   });
 });
 

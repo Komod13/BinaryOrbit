@@ -210,7 +210,7 @@ BinaryOrbit/
 - 全国视野（zoom 4）AMap + `AMap.GeoJSON` 图层渲染**地级市边界**。
   - **已点亮**（有 place 或 `city_manual` 记录）：`--accent` 25% 填充，`--accent-ink` 1.5px 描边，城市名常显，下面一行「餐厅 N · 景点 M」（zoom < 5 时隐藏）。
   - **未点亮**：透明填充，极淡灰描边（全国常驻，任意城市可点）；名字只在 hover 或选中时出现。
-- 边界数据来自 DataV.GeoAtlas，**逐省懒加载**（并发 4），缓存到 `data/geo/prov_<adcode>.json`；已经缓存的省立即渲染，缺的按「正在加载城市边界 12/34」的进度补齐，补齐之后完全离线。
+- 边界数据来自 DataV.GeoAtlas，**逐省懒加载**（并发 4），缓存到 `data/geo/<adcode>.json`；已经缓存的省立即渲染，缺的按「正在加载城市边界 12/34」的进度补齐，补齐之后完全离线。
 - **行政单元归一化**：4 个直辖市合并为 1 个城市（多边形用省级轮廓 `310000.json` 等，不用 16 个区）；省直辖县级市（仙桃/济源/海南各县）保留为独立城市；台湾（710000，DataV 无数据）不画多边形，也不能点亮；港澳正常。
 - 点某城市 → 浮卡片：
   - 已点亮：显示餐厅 N、景点 M、最近一次时间，以及「在地图上查看」；点击后跳回地图页，视野移到该城地点范围并高亮这些标记（**不改筛选 chips**）。
@@ -297,7 +297,7 @@ CREATE TABLE IF NOT EXISTS city_dict (     -- 城市字典（启动时从 /v3/co
 | GET | `/api/search` | 高德代理：`?keyword=&lng=&lat=&radius=&type=`；有关键词走 `place/text`，有坐标+半径走 `place/around`；结果附 `existing_place_id` |
 | GET | `/api/regeo` | 逆地理编码：坐标 → 城市名/adcode/区县 |
 | GET | `/api/cities` | 去过的城市列表 + 每城 `restaurant_count`/`spot_count`/`last_visited_on` |
-| GET | `/api/cities/geo` | 地级市 GeoJSON（按省缓存、全国轮廓，服务端归一化后合并下发） |
+| GET | `/api/cities/geo` | 地级市 GeoJSON（按省缓存、全国轮廓，服务端归一化后合并下发；`?loaded=` 传已拿到的省份，只补新增） |
 | POST / DELETE | `/api/cities/manual` | 补标 / 取消补标城市 |
 | GET | `/api/stats` | 三个数字 |
 
@@ -316,7 +316,7 @@ CREATE TABLE IF NOT EXISTS city_dict (     -- 城市字典（启动时从 /v3/co
 
 - 源：`https://geo.datav.aliyun.com/areas_v3/bound/<adcode>_full.json`，逐省（33 个可用，台湾 404）。
 - 归一化：直辖市跳过其 `district` 级要素，改用 `<adcode>.json`（省级整体轮廓，如上海 21KB）；其余 `level=city` 要素照收（含省直辖县级市、海南各县）。
-- 缓存：`data/geo/prov_<adcode>.json` 原样落盘，`data/geo/index.json` 记录已完成的省份；`/api/cities/geo` 只下发已经缓存的部分，其余由前端按进度提示补齐。
+- 缓存：`data/geo/<adcode>.json` 存归一化后的 Feature 数组（直辖市为省级整体轮廓），没有额外索引文件；文件存在即视为已缓存。`/api/cities/geo?loaded=<已拿到的省份>` 只下发新增部分（首次不带参数 = 全量），其余由前端按进度提示补齐；轮询按 2s→30s 退避（最多 24 次），切到标记页时暂停，回到足迹页再继续，避免 keep-alive 后台重复拉全量或某省永久失败时无限重试。
 - 首次全量约 **3.68MB**，之后零网络请求。
 
 ### 4.5 运行与运维
@@ -351,7 +351,7 @@ npm scripts：
 | `npm run dev:server` / `dev:web` | 后端 watch / Vite 开发服务器 |
 | `npm run build` | 构建 `web/dist`（生产） |
 | `npm start` | 起生产服务（需要 `web/dist`） |
-| `npm test` | 后端 8 条集成测试（`node --test`，无需额外依赖） |
+| `npm test` | 后端集成 / 单元测试（`node --test`，无需额外依赖、不请求外网） |
 | `npm run typecheck` | `vue-tsc --noEmit`（同一个 tsconfig，顺带检查 `.vue` 里的 script） |
 
 > npm 11 默认不执行依赖的安装脚本，`esbuild` 缺 postinstall 会导致 `vite build` 失败。
@@ -375,7 +375,7 @@ npm scripts：
 | 内置/自定义地图样式 | ❌ `mapStyle` 被忽略、`/v4/map/styles2` 返回 `10002` → 改用 CSS 滤镜 |
 | 高德瓦片直连（Leaflet 退路） | ✅ `webrd0X.is.autonavi.com` 无 key 返回 PNG |
 
-### 5.2 后端集成测试（`node --test`，内置运行器，高德 API 全部 mock）
+### 5.2 后端测试（`node --test`，内置运行器，不请求外网）
 
 1. 新建 place + 首次 visit 成功，`external_id` 唯一；
 2. 同 `external_id` 二次 POST → 不新建 place、追加 visit、返回 `deduped:true`；
@@ -385,6 +385,10 @@ npm scripts：
 6. `DELETE place` 级联删除 visits；
 7. `POST /api/cities/manual` / `DELETE` 生效，城市并集口径正确（含直辖市归一化：`310101` 落库为 `310000`）；
 8. `/api/stats` 三个数字口径正确（同一店多次到访只算一家店）。
+9. `?type=` 空值等同于不筛选，非法 `type` 返回 400；
+10. 不存在的日期（如 `2026-02-31`）返回 400、不落库。
+
+另有 `server/tests/validate.test.ts` / `amap.test.ts` / `cities.test.ts` 覆盖坐标与日期的边界校验、POI 距离解析（文本检索的 `distance` 必须是 `null`，不能变成 0），以及城市字典的批量/单条匹配规则。
 
 ### 5.3 手动验收清单（Windows，约 5 分钟）
 

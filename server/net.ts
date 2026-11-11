@@ -43,7 +43,12 @@ function inRange(value: number, base: string, bits: number): boolean {
 export function isValidIPv4(ip: string): boolean {
   const value = toInt(ip);
   if (value === null) return false;
-  return !inRange(value, '0.0.0.0', 8) && !inRange(value, '224.0.0.0', 3) && !inRange(value, '240.0.0.0', 4);
+  return (
+    !inRange(value, '0.0.0.0', 8) &&
+    !inRange(value, '127.0.0.0', 8) &&
+    !inRange(value, '224.0.0.0', 3) &&
+    !inRange(value, '240.0.0.0', 4)
+  );
 }
 
 /**

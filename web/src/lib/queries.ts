@@ -7,7 +7,6 @@ import type {
   CreatePlaceResponse,
   Place,
   PlaceDetail,
-  PoiResult,
   SearchResponse,
   Stats,
   Visit,
@@ -38,7 +37,8 @@ export const fetchStats = () => apiGet<Stats>('/api/stats');
 
 export const fetchCities = () => apiGet<{ cities: CityStat[] }>('/api/cities').then((data) => data.cities);
 
-export const fetchCitiesGeo = (): Promise<CitiesGeo> => apiGet<CitiesGeo>('/api/cities/geo');
+export const fetchCitiesGeo = (loaded: readonly string[] = []): Promise<CitiesGeo> =>
+  apiGet<CitiesGeo>('/api/cities/geo', loaded.length ? { loaded: loaded.join(',') } : undefined);
 
 export const searchAround = (lng: number, lat: number, radius: number, type?: string) =>
   apiGet<SearchResponse>('/api/search', { lng, lat, radius, type });
@@ -69,5 +69,3 @@ export const fetchRegeo = (lng: number, lat: number, signal?: AbortSignal) =>
     { lng, lat },
     { signal },
   );
-
-export type { PoiResult };
