@@ -47,7 +47,8 @@ const position = computed(() => ({
 
 const title = computed(() => {
   if (props.mode === 'visit') return props.place?.name ?? '';
-  if (props.poi) return '记录到这个地点';
+  // 搜索选中已有 POI：「新地点」标签已经标明状态，标题直接用选中的店名
+  if (props.poi) return props.poi.name;
   return '手动记一个地点';
 });
 
