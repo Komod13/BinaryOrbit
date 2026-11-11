@@ -444,7 +444,7 @@ const showEmptyHint = computed(
       />
     </DockSheet>
 
-    <DockSheet v-if="drawer.mode === 'form-new' || drawer.mode === 'form-visit'">
+    <DockSheet v-if="drawer.mode === 'form-new' || drawer.mode === 'form-visit'" class="dock-panel--form">
       <PlaceFormPanel
         :key="formKey"
         :tiers="config?.priceTiers ?? { low: 60, high: 150 }"

@@ -53,7 +53,7 @@ let clusterTimer: ReturnType<typeof setTimeout> | null = null;
 let interacting = false;
 let pendingRebuild = false;
 
-/** 长按：按住不动 520ms 算选点，手指 / 鼠标挪超过 8px 就当作在拖地图 */
+/** 触摸端长按：按住不动 520ms 算选点，手指挪超过 8px 就当作在拖地图；PC 端走右键 */
 const LONG_PRESS_MS = 520;
 const LONG_PRESS_TOLERANCE = 8;
 
@@ -356,10 +356,10 @@ function emitView(): void {
 }
 
 /**
- * 长按选点：在该点放一个红图钉 + 小浮窗（添加餐厅 / 添加景点）。
+ * 地图选点：在该点放一个红图钉 + 小浮窗（添加餐厅 / 添加景点）。
  *
- * 高德 2.0 的 Map 事件里没有 longpress（只有 Overlay 有），所以自己在容器上听 pointer 事件：
- * 按住不动 520ms 算选点，挪动超过 8px 或松手就当作在拖地图。
+ * 手机靠长按：高德 2.0 的 Map 事件里没有 longpress（只有 Overlay 有），所以自己在容器上听
+ * pointer 事件计时（按住 520ms、挪动不超过 8px）；PC 用右键（contextmenu）。
  */
 function createDraftElement(): HTMLDivElement {
   const element = document.createElement('div');
@@ -429,7 +429,8 @@ function pressOnOverlay(target: EventTarget | null): boolean {
 }
 
 function onHostPointerDown(event: PointerEvent): void {
-  if (event.pointerType === 'mouse' && event.button !== 0) return;
+  // PC 走右键选点（见 onHostContextMenu），长按只给触摸 / 手写笔
+  if (event.pointerType === 'mouse') return;
   // 新的一次按下：之后那个 click 该算数（用来关掉浮窗）
   suppressMapClick = false;
   if (pressOnOverlay(event.target)) return;
@@ -450,8 +451,11 @@ function onHostPointerMove(event: PointerEvent): void {
 }
 
 function onHostContextMenu(event: MouseEvent): void {
-  // 长按 / 右键刚弹出选点浮窗时，不要叠上浏览器自己的菜单
-  if (draftPoint || pressTimer) event.preventDefault();
+  // 地图上不要浏览器自带的右键菜单；右键直接当作选点（触摸设备长按触发的 contextmenu 同样落到这里）
+  event.preventDefault();
+  if (pressOnOverlay(event.target)) return;
+  cancelPress();
+  showDraftMenu(event.clientX, event.clientY);
 }
 
 /**

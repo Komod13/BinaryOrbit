@@ -889,6 +889,10 @@
   color: var(--accent-ink);
 }
 
+.field-pair {
+  display: contents;
+}
+
 .field {
   display: grid;
   /* 单列网格允许收缩：iOS 的 date / textarea 有较大的固有宽度，否则会把整列撑出卡片右边缘 */
@@ -1220,6 +1224,99 @@ textarea:focus {
 
   .dock-panel .sheet-grip {
     display: none;
+  }
+
+  /* PC 端录入表单：压紧间距、两个按钮并排，一屏就能看到「取消」，不用拖滚动条 */
+  .dock-panel--form {
+    padding: 12px 18px;
+    /* 比搜索面板多占一点高度（底部只留 12px），矮窗口也尽量一屏放下 */
+    max-height: calc(100vh - 140px);
+  }
+
+  .dock-panel--form .sheet-head {
+    margin-bottom: 0;
+  }
+
+  .dock-panel--form .sheet-head .icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .dock-panel--form .sheet-title {
+    font-size: 18px;
+  }
+
+  .dock-panel--form .sheet-sub {
+    margin-top: 3px;
+    font-size: 12.5px;
+    line-height: 1.4;
+  }
+
+  .dock-panel--form .field {
+    margin-top: 9px;
+    gap: 4px;
+  }
+
+  /* 日期 / 评分并排，栏宽 520 放得下，再省一行高度 */
+  .dock-panel--form .field-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+    margin-top: 8px;
+  }
+
+  .dock-panel--form .field-pair .field {
+    margin-top: 0;
+  }
+
+  .dock-panel--form .field-label,
+  .dock-panel--form .field label,
+  .dock-panel--form .field legend {
+    font-size: 12.5px;
+  }
+
+  /* 价位提示里那行「低 <60 · 中 …」在按钮上已经有了，PC 端也不再占一行 */
+  .dock-panel--form .field-hint {
+    display: none;
+  }
+
+  .dock-panel--form input[type='text'],
+  .dock-panel--form input[type='date'] {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 14px;
+  }
+
+  .dock-panel--form textarea {
+    min-height: 42px;
+    padding: 7px 10px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .dock-panel--form .segmented {
+    padding: 3px;
+  }
+
+  .dock-panel--form .segmented button {
+    height: 30px;
+    font-size: 12.5px;
+  }
+
+  .dock-panel--form .star {
+    width: 28px;
+    height: 28px;
+  }
+
+  .dock-panel--form .sheet-actions {
+    grid-template-columns: 1fr 1fr;
+    margin-top: 10px;
+    gap: 8px;
+  }
+
+  .dock-panel--form .sheet-actions .btn {
+    height: 36px;
+    font-size: 14px;
   }
 
   @keyframes dock-panel-in {

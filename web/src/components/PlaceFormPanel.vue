@@ -244,20 +244,23 @@ function keepNew(): void {
       </div>
     </fieldset>
 
-    <div class="field" :class="{ 'is-invalid': dateError }">
-      <label for="form-date">到访日期</label>
-      <div class="field-control field-control--date">
-        <input id="form-date" v-model="date" type="date" max="2100-12-31" />
-        <span class="date-display" aria-hidden="true">{{ displayDate }}</span>
+    <!-- PC 端这两项并排，少占一行高度（手机端仍是上下单列） -->
+    <div class="field-pair">
+      <div class="field" :class="{ 'is-invalid': dateError }">
+        <label for="form-date">到访日期</label>
+        <div class="field-control field-control--date">
+          <input id="form-date" v-model="date" type="date" max="2100-12-31" />
+          <span class="date-display" aria-hidden="true">{{ displayDate }}</span>
+        </div>
+        <p v-if="dateError" class="field-error">{{ dateError }}</p>
       </div>
-      <p v-if="dateError" class="field-error">{{ dateError }}</p>
-    </div>
 
-    <fieldset class="field">
-      <legend>评分（可选）</legend>
-      <StarRating v-model="rating" />
-      <p class="field-hint">再点一次已选中的星星可以取消。</p>
-    </fieldset>
+      <fieldset class="field">
+        <legend>评分（可选）</legend>
+        <StarRating v-model="rating" />
+        <p class="field-hint">再点一次已选中的星星可以取消。</p>
+      </fieldset>
+    </div>
 
     <fieldset v-if="showTier" class="field">
       <legend>人均价位（可选）</legend>
